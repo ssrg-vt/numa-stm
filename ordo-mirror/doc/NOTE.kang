@@ -1,0 +1,72 @@
+* Implication of HW clock for DB
+	- The bottleneck of SW clock with atomic instructions is killing scalability of multiversion database(i.e. DBx1000, Silo). HW clock can be a rescue because it's *free* resource.
+		- That said, We can just get rid of atomic instructions for timestamp mgmt. 
+	- Time-drift resolution protocol provides an illusion of globally-synchronized HW clock with local clocks. 
+
+* Approach 1: Acceleration of existing CC schemes with the HW clock.
+	- Silo-OCC: 
+		- Its main motivation is to avoid SW timestamp mgmt overhead. That's why it adapted coarse-grained timestamp and OCC within an epoch. 
+		- It's scalable, but only in low-contention workloads. Under high contention, its performance can be killed by CC, regardless of good scalability.
+		- HW-clock actually undermines Silo's main assumption that timestamp mgmt. is expensive. 
+
+	- MVCC:
+		- Robust CC under contention, Basically no RW contention happens. 
+		- The biggest concern on massively parallel hardware is ordering cost that relies on atomic instructions. 
+		- Hopefully, thanks to HW clock, it could be scalable as much as OCC under low contention workload, while outperforming OCC under high contention. 
+
+
+* Approach 2: Can we propose a novel CC that can be unleashed by HW clock?
+	- RLU-CC 
+		- Problem of applying original RLU to CC scheme: Reader block writers
+			- Originally, RLU writer has to wait for reader's completion.
+			- Especially harmful when readers are long. Writer threads are unlikely make progress until epoch closure. 
+			- We need to tweak the original algorithm, consdering the transaction's long lifetime. 
+
+		- Solution. offloading write-set installation to background daemon, when we don't need old versions anymore.
+			- Writer threads just skip write-set installation and reader-wait, leaving their write-sets visible to other in-flight readers. 
+			- At some point, we have to apply the up-to-date data to original database. Epoch system can do this job w/o contention with foreground transactions. 
+				- Epoch system will make sure old versions of updated record won't be interested by anyone at some point (cold epoch). 
+				- Background GC daemon is launched and installs all up-to-date write-sets onto original DB. 
+
+	- Two-version CC
+		- With the same motivation with RLU-CC, this time, let writers install their write-set, but still skip reader-wait. 
+		- There's no garbage we have to cleanup thanks to immediate write-set installation. So no need for epoch tracking.
+		- Old versions can disappear after writers' commit. Some in-flight readers wouldn't able to find desired versions.
+			- Option 1. Let readers just read the version: falling back to Read-committed CC mode. 
+				- Pros. More readers survive
+				- Cons. consistency guarantee is relaxed. 
+			- Option 2. Reader *retries* with new timestamp with bounded retry count. (Second-chance to readers)
+				- Pros. Hopefully less RW-aborts with the second-chance policy.
+				- Cons. If the reader is hitting hot data, retry will be just more waste of cycles. 
+
+* Summary
+	- HW-clock is definitely powerful.
+	- In terms of CC, RLU-CC and 2VCC don't look very novel or better from existing MVCC, if they commonly rely on HW clock.
+		- Some systems are already doing similar (Hekaton, Deuteronomy, ERMIA) but they didn't call it RLU.
+
+
+//
+// 03/24 
+//
+
+* Hekaton /w snapshot 
+	- In serializable mode, Hekaton performs read-validation. Set the CC level to snapshot mode to avoid massive aborts under heavy contention 
+
+* Decomposing return code
+	- for better analysis, decompose abort reason into RW_ABORT and WW_ABORT in RC structure. 
+	- WW abort is not allowed in RDBMS (only NoSQLs allow it). MVCC is not supposed to produce RW_ABORT under normal condition (unless we use serial certifier) 
+
+* Buggy hekaton implementation in dbx1000
+	- no need for record locks
+
+* Tweak retry part a bit from reader-side
+	- Let's not assign new timestamp on reader-retry. It increases the possibility of hitting ambiguous time-diff zone. More likely to waste cycles.
+	- Just start over with the old timestamp so that reader will time-travel more safely w/o time ambiguity.
+
+* Figures 
+	- YCSB/TPCC scalability with varying the degree of contention ( no/low/med/high )
+		- message 1. MVCC catches up with OCC camp thanks to HW clock	
+		- message 2. OCC camp is killed by high contention, while MVCC is not. ( implying it's insensitive(or robust) to workload characteristics) 
+	- Cycle breakdown of HW clock + MVCC 
+		- to prove SW clock mgmt is gone!
+	

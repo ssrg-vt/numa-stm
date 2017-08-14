@@ -1,0 +1,41 @@
+Hi Sanidhya & Virendra,
+
+SPARC has 2 register you can read (cheaply) in user-mode : STICK and TICK.
+TICK has higher resolution, but might be subject to drift and skew.  (IIRC it’s
+coherent intra-socket but not inter-socket).  STICK advances slightly less
+often but is  coherent over the whole system.  STICK is a causal clock in the
+following sense.  Say thread T1 reads STICK and observes value A, and then
+writes A into memory location M.   If some other thread T2 fetches M and
+observes value A, and then queries STICK, returning value B, it should be the
+case that B >= A.  Proper on the loads and stores is assumed, of course.
+
+Regards
+
+-------------------------------------------------------------------------------
+- What is the resolution of STICK?
+
+Beware that it’s been some time since I looked at this.   The SPARC
+architecture manual is far more accurate than I am.
+
+I think they both have the same resolution (unit in cycles?) but that STICK
+suffers more quantization, but is coherent over the whole system.   The degree
+of quantization may actually vary.
+
+…
+- So, we cannot say that STICK is a synchronized clock. All it maintains is the
+  causal order like TSC on a single node?
+
+I don’t know precisely what you mean by synchronized.   It’s causal like RDTSCP
+(ignoring the errata).
+
+…
+- Can we measure or observe the drift of TICK register? AFAIK, TSC does not
+  drift.
+
+You can see drift & skew via RDTSC but in theory not with RDTSCP.
+
+…
+- What is the meaning of “coherent intra-socket but not inter-socket" for TICK?
+
+I don’t believe that TICK is necessarily a causal clock when used between
+sockets.

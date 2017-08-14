@@ -1,0 +1,9 @@
+**/*.o
+bayes/bayes
+genome/genome
+intruder/intruder
+kmeans/kmeans
+labyrinth/labyrinth
+ssca2/ssca2
+vacation/vacation
+yada/yada

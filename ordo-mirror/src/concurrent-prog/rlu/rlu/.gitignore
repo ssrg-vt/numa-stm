@@ -1,0 +1,9 @@
+bench-*
+*.o
+kernel-bench/*.cmd
+kernel-bench/*.o
+kernel-bench/*.ko
+kernel-bench/Module.symvers
+kernel-bench/modules.order
+kernel-bench/*.mod.c
+*.swp

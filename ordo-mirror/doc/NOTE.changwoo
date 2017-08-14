@@ -1,0 +1,36 @@
+* Comments from Binoy
+
+Few comments to improve the work:
+- Is rdtscp scalable on NUMAs?
+- Do you need a correctness proof for the case when the measured counters are within the clock offset?
+- Wouldn't Intel's Haswell/HTM be also a compelling competitor?
+- Besides TL2, take a look at some of the other STM algorithms, in particular NoRec and maybe also RingSTM. The implementations of these may already be available, so it'd be a low-cycle effort to include them as baselines.
+
+I suggest doing experiments with large WSSes to demonstrate the benefits over HTM. This should be an easy sell, but I don't know how large WSSes can be for realistic applications. Maybe, try the STAMP benchmark suite ...
+
+=======================================================================
+* calculate tsc offset in a guest VM?
+
+* Calculating clock drift in a single machine
+   - Need to check if clock drift can occur only at initializing CPUs
+     In other words, after the drift is calculated at initialization,
+     do we need to re-calculate the clock drift?
+
+* Where to use the clock drift value?
+   - It would be useful for new types of concurrent algorithms.
+   - Here are some potentially useful starting points:
+      - 'conservative' oplog
+         - correctness guaranteed even if there are clock drift 
+      - 'scalable' read-copy-log
+         - replace global counter to true-time?
+      - 'simplified' silo
+         - the key motivation of silo is reducing the contention of
+	 atomic increase of global transaction counter
+	 - can we simply rely on true-time and use simpler transaction
+	 protocol?
+   - Here are some more aggressive questions:
+      - 'update-heavy' relativistic programming
+      - concurrent algorithm without memory barrier
+         - can we use true-time instead of memory barrier?
+	 - more optimistic concurrency control?
+         [SK]: how about guaranteeing memory  boundedness?

@@ -1,0 +1,13 @@
+[ ] - Implement Oplog [start implementing this one, seems easy]
+[ ] - Scripts for all the benchmarks
+[ ] - Get numbers for all OCC...
+[ ] - Run Doppel
+[ ] - Run others STM and note down their performance
+[ ] - Small wrapper that applications will use to get the epoch.... [in progress]
+[ ] - implement rlu based citrus tree (see from the paper) [need to rerun the benchmark and put the table]
+[ ] - replace pthread locks from dbx1000 either from libslock/litl locks
+[ ] - extend the glibc and vdso for supporting every task to get the epoch [easy stuff..., but not much time]
+[D] - RLU pseudocode and understanding
+[D] - Implement combining based timestampning
+[D] - Explain the difference in numbers between vlist and lru evaluation
+  - not worth the time....

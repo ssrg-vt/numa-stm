@@ -1,0 +1,3 @@
+compile:
+
+STM=TL2 MALLOC=JEMALLOC make

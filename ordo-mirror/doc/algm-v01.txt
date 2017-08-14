@@ -1,0 +1,77 @@
+============================================================
+Fig 3. of the RLU:SOSP15 paper
+============================================================
+
+* Two techniques
+(1) read-side retry
+(2) limiting write rate less than epsilon
+
+
+------------------------------------------------------------
+* T1
+------------------------------------------------------------
+(1) l-clock = rdtscp()
+(2) read O1 (not locked)
+(3) read O2
+    if (l-clock > T2.w-closk) {
+      steal new copy from T2.w-log
+    }
+    else if (l-clock < T2.w-closk) {
+      read O2
+    }
+    else {
+       /* l-clock is within the epsilon boundary */
+       while((l-clock = rdtscp()) is less than epsilon boundary) {
+          ; /* do nothing */
+       }
+       goto (2)
+    }
+(4) ... done
+
+------------------------------------------------------------
+* T2
+------------------------------------------------------------
+(1) l-clock = rdtscp()
+(2) read O1 (not locked)
+(3) read O2 (not locked)
+(4) log O2 and lock
+(5) update O2 in w-log
+(6) log O3 and lock
+(7) update O3 in w-log
+(9) update prev-w-clock using hierarchical combining
+    (9-1) (temp-w-clock, node-id) = rdtscp()
+    (9-2) add-to-numa-combining-list(temp-wlock, node-id, &w-clock)
+    (9-3) if it is not a combiner then wait util my job is done
+          if it is a combiner, process waiters' job
+       (9-3-1) for w in waiters:
+       (9-3-2)    if w.tmp-w-clock is greater than prev-w-lock
+                  beyond epsilon:
+       (9-3-3)       tmp-w-clock = w.tmp-w-clock
+       (9-3-4)    else if this is the first in the batch:
+       (9-3-5)       while (((tmp-w-clock = rdtscp()) - prev-w-lock)
+                            < epsilon) {
+			    ; /* do nothing */
+		     }
+       (9-3-6)    else:
+                     tmp-w-clock = rdtscp()
+       (9-3-7)    prev-w-lock = tmp-w-clock
+                  *w.w-clock  = tmp-w-clock
+(A) wait for readers
+(B) write back w-log
+
+------------------------------------------------------------
+* T3
+------------------------------------------------------------
+(1) l-clock = rdtscp()
+(2) read O2 locked by T2
+    if (l-clock > T2.w-closk) {
+      steal new copy from T2.w-log
+    }
+    else if (l-clock < T2.w-closk) {
+      read O2
+    }
+    else {
+       /* l-clock is within the epsilon boundary */
+       goto (1)
+    }
+(3) ... done

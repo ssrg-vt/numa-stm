@@ -1,0 +1,30 @@
+- Some info:
+
+cat /proc/cpuinfo:
+processor       : 95
+BogoMIPS        : 200.00
+Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics
+CPU implementer : 0x43
+CPU architecture: 8
+CPU variant     : 0x1
+CPU part        : 0x0a1
+CPU revision    : 1
+
+[    0.000000] Architected cp15 timer(s) running at 100.00MHz (phys).
+[    0.000000] Boot CPU: AArch64 Processor [431f0a11]
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x171024e7e0, max_idle_ns: 440795205315 ns
+[    0.000002] sched_clock: 56 bits at 100MHz, resolution 10ns, wraps every 4398046511100ns
+...
+[    1.344917] CPU features: detected feature: GIC system register CPU interface
+[    1.344920] CPU features: detected feature: Software prefetching using PRFM
+[    1.344925] CPU: All CPU(s) started at EL2
+...
+[    1.523410] clocksource: Switched to clocksource arch_sys_counter
+
+Tasks:
+- Figure out arch_sys_counter
+- Extend tsc scalability code for ARM
+- Calculate the clock gap
+
+link:
+https://translate.google.com/translate?hl=en&sl=zh-CN&u=http://www.wowotech.net/timer_subsystem/armgeneraltimer.html&prev=search

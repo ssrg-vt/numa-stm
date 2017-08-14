@@ -1,0 +1,6 @@
+- develop a micro benchmark that runs n threads on all the machines with
+  SCHED_RR policy on all cores and then determine the time gap between all
+  the cores across all NUMA domains.
+    - this will give us the time difference between each core and how much do they
+      vary...
+    - then create a table and try to sync all the vcpu threads on the kvmclock

@@ -1,0 +1,8 @@
+*.o
+*.ko
+*.mod.*
+modules.order
+Module.symvers
+cpuseq.h
+.tmp_versions/*
+*.swp

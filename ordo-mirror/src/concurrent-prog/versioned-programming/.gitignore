@@ -1,0 +1,6 @@
+*.o
+benchmark_list_*
+benchmark_tree_*
+swisstm/include/
+swisstm/lib/
+swisstm/target

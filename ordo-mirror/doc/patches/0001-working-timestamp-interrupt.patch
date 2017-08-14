@@ -1,0 +1,381 @@
+From cc3da8af8125abe97d3f8caa8b30904273f1d7e6 Mon Sep 17 00:00:00 2001
+From: Sanidhya Kashyap <sanidhya@gatech.edu>
+Date: Tue, 28 Feb 2017 15:35:04 -0500
+Subject: [PATCH] working timestamp interrupt
+
+---
+ src/linux/arch/x86/Kconfig                   |  9 ++++
+ src/linux/arch/x86/entry/entry_64.S          |  1 +
+ src/linux/arch/x86/include/asm/apic.h        |  5 ++
+ src/linux/arch/x86/include/asm/entry_arch.h  |  1 +
+ src/linux/arch/x86/include/asm/hw_irq.h      |  2 +
+ src/linux/arch/x86/include/asm/irq_vectors.h |  3 +-
+ src/linux/arch/x86/include/asm/smp.h         | 16 +++++++
+ src/linux/arch/x86/kernel/apic/x2apic_phys.c | 29 ++++++++++++
+ src/linux/arch/x86/kernel/irqinit.c          |  2 +
+ src/linux/arch/x86/kernel/smp.c              | 37 ++++++++++++++-
+ src/linux/include/linux/smp.h                |  8 ++++
+ src/linux/kernel/smp.c                       | 68 ++++++++++++++++++++++++++++
+ 12 files changed, 179 insertions(+), 2 deletions(-)
+
+diff --git a/src/linux/arch/x86/Kconfig b/src/linux/arch/x86/Kconfig
+index d9a94da..1fe53c8 100644
+--- a/src/linux/arch/x86/Kconfig
++++ b/src/linux/arch/x86/Kconfig
+@@ -390,6 +390,15 @@ config X86_X2APIC
+ 
+ 	  If you don't know what to do here, say N.
+ 
++config X2APIC_IPI_BROADCAST
++	bool "Broadcast the IPIs than unicast"
++	depends on X86_X2APIC
++	---help---
++	  The current implementation of X2APIC only considers unicast method
++	  of doing an IPI even the core wants to broadcast it.
++	  Hence, we will do an explicit broadcast for a flat addressing mode.
++
++
+ config X86_MPPARSE
+ 	bool "Enable MPS table" if ACPI || SFI
+ 	default y
+diff --git a/src/linux/arch/x86/entry/entry_64.S b/src/linux/arch/x86/entry/entry_64.S
+index 9ee0da1..f9724d8 100644
+--- a/src/linux/arch/x86/entry/entry_64.S
++++ b/src/linux/arch/x86/entry/entry_64.S
+@@ -639,6 +639,7 @@ apicinterrupt THERMAL_APIC_VECTOR		thermal_interrupt		smp_thermal_interrupt
+ apicinterrupt CALL_FUNCTION_SINGLE_VECTOR	call_function_single_interrupt	smp_call_function_single_interrupt
+ apicinterrupt CALL_FUNCTION_VECTOR		call_function_interrupt		smp_call_function_interrupt
+ apicinterrupt RESCHEDULE_VECTOR			reschedule_interrupt		smp_reschedule_interrupt
++apicinterrupt TIMESTAMP_VECTOR			timestamp_interrupt             smp_timestamp_interrupt
+ #endif
+ 
+ apicinterrupt ERROR_APIC_VECTOR			error_interrupt			smp_error_interrupt
+diff --git a/src/linux/arch/x86/include/asm/apic.h b/src/linux/arch/x86/include/asm/apic.h
+index bc27611..d7b1b0f 100644
+--- a/src/linux/arch/x86/include/asm/apic.h
++++ b/src/linux/arch/x86/include/asm/apic.h
+@@ -314,6 +314,11 @@ struct apic {
+ 	void (*send_IPI_allbutself)(int vector);
+ 	void (*send_IPI_all)(int vector);
+ 	void (*send_IPI_self)(int vector);
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++	void (*send_IPI_allbutself_broadcast)(int vector);
++	void (*send_IPI_all_broadcast)(int vector);
++#endif
++
+ 
+ 	/* wakeup_secondary_cpu */
+ 	int (*wakeup_secondary_cpu)(int apicid, unsigned long start_eip);
+diff --git a/src/linux/arch/x86/include/asm/entry_arch.h b/src/linux/arch/x86/include/asm/entry_arch.h
+index df00299..0e15b9f 100644
+--- a/src/linux/arch/x86/include/asm/entry_arch.h
++++ b/src/linux/arch/x86/include/asm/entry_arch.h
+@@ -16,6 +16,7 @@ BUILD_INTERRUPT(call_function_single_interrupt,CALL_FUNCTION_SINGLE_VECTOR)
+ BUILD_INTERRUPT3(irq_move_cleanup_interrupt, IRQ_MOVE_CLEANUP_VECTOR,
+ 		 smp_irq_move_cleanup_interrupt)
+ BUILD_INTERRUPT3(reboot_interrupt, REBOOT_VECTOR, smp_reboot_interrupt)
++BUILD_INTERRUPT3(timestamp_interrupt,TIMESTAMP_VECTOR, smp_timestamp_interrupt)
+ #endif
+ 
+ BUILD_INTERRUPT(x86_platform_ipi, X86_PLATFORM_IPI_VECTOR)
+diff --git a/src/linux/arch/x86/include/asm/hw_irq.h b/src/linux/arch/x86/include/asm/hw_irq.h
+index b90e105..5ebba06 100644
+--- a/src/linux/arch/x86/include/asm/hw_irq.h
++++ b/src/linux/arch/x86/include/asm/hw_irq.h
+@@ -44,6 +44,7 @@ extern asmlinkage void deferred_error_interrupt(void);
+ 
+ extern asmlinkage void call_function_interrupt(void);
+ extern asmlinkage void call_function_single_interrupt(void);
++extern asmlinkage void timestamp_interrupt(void);
+ 
+ #ifdef CONFIG_TRACING
+ /* Interrupt handlers registered during init_IRQ */
+@@ -58,6 +59,7 @@ extern void trace_threshold_interrupt(void);
+ extern void trace_deferred_error_interrupt(void);
+ extern void trace_call_function_interrupt(void);
+ extern void trace_call_function_single_interrupt(void);
++#define trace_timestamp_interrupt timestamp_interrupt
+ #define trace_irq_move_cleanup_interrupt  irq_move_cleanup_interrupt
+ #define trace_reboot_interrupt  reboot_interrupt
+ #define trace_kvm_posted_intr_ipi kvm_posted_intr_ipi
+diff --git a/src/linux/arch/x86/include/asm/irq_vectors.h b/src/linux/arch/x86/include/asm/irq_vectors.h
+index 6ca9fd6..5004ca4 100644
+--- a/src/linux/arch/x86/include/asm/irq_vectors.h
++++ b/src/linux/arch/x86/include/asm/irq_vectors.h
+@@ -89,11 +89,12 @@
+  */
+ #define IRQ_WORK_VECTOR			0xf6
+ 
+-#define UV_BAU_MESSAGE			0xf5
++#define TIMESTAMP_VECTOR               0xf5
+ #define DEFERRED_ERROR_VECTOR		0xf4
+ 
+ /* Vector on which hypervisor callbacks will be delivered */
+ #define HYPERVISOR_CALLBACK_VECTOR	0xf3
++#define UV_BAU_MESSAGE                 0xee
+ 
+ /* Vector for KVM to deliver posted interrupt IPI */
+ #ifdef CONFIG_HAVE_KVM
+diff --git a/src/linux/arch/x86/include/asm/smp.h b/src/linux/arch/x86/include/asm/smp.h
+index 66b0573..7529021 100644
+--- a/src/linux/arch/x86/include/asm/smp.h
++++ b/src/linux/arch/x86/include/asm/smp.h
+@@ -58,6 +58,10 @@ struct smp_ops {
+ 
+ 	void (*send_call_func_ipi)(const struct cpumask *mask);
+ 	void (*send_call_func_single_ipi)(int cpu);
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++	void (*send_call_func_broadcast_ipi)(bool exclude_self);
++#endif
++	void (*timestamp_ipi)(bool exclude_self);
+ };
+ 
+ /* Globals due to paravirt */
+@@ -126,6 +130,18 @@ static inline void arch_send_call_function_ipi_mask(const struct cpumask *mask)
+ 	smp_ops.send_call_func_ipi(mask);
+ }
+ 
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++static inline void arch_send_call_function_ipi_broadcast(bool exclude_self)
++{
++	smp_ops.send_call_func_broadcast_ipi(exclude_self);
++}
++#endif
++
++static inline void arch_timestamp_ipi(bool exclude_self)
++{
++	smp_ops.timestamp_ipi(exclude_self);
++}
++
+ void cpu_disable_common(void);
+ void native_smp_prepare_boot_cpu(void);
+ void native_smp_prepare_cpus(unsigned int max_cpus);
+diff --git a/src/linux/arch/x86/kernel/apic/x2apic_phys.c b/src/linux/arch/x86/kernel/apic/x2apic_phys.c
+index a1242e2..1a18042 100644
+--- a/src/linux/arch/x86/kernel/apic/x2apic_phys.c
++++ b/src/linux/arch/x86/kernel/apic/x2apic_phys.c
+@@ -44,6 +44,31 @@ static void x2apic_send_IPI(int cpu, int vector)
+ 	__x2apic_send_IPI_dest(dest, vector, APIC_DEST_PHYSICAL);
+ }
+ 
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++static void
++__x2apic_broadcast_IPI_mask(int vector, int apic_dest)
++{
++	unsigned long flags;
++
++	x2apic_wrmsr_fence();
++
++	/* XXX: should we disable the irq???? */
++	local_irq_save(flags);
++	__x2apic_send_IPI_dest(0xff, vector, apic_dest);
++	local_irq_restore(flags);
++}
++
++static void x2apic_send_IPI_allbutself_broadcast(int vector)
++{
++	__x2apic_broadcast_IPI_mask(vector, APIC_DEST_ALLBUT);
++}
++
++static void x2apic_send_IPI_all_broadcast(int vector)
++{
++	__x2apic_broadcast_IPI_mask(vector, APIC_DEST_ALLINC);
++}
++#endif
++
+ static void
+ __x2apic_send_IPI_mask(const struct cpumask *mask, int vector, int apic_dest)
+ {
+@@ -136,6 +161,10 @@ static struct apic apic_x2apic_phys = {
+ 	.send_IPI_allbutself		= x2apic_send_IPI_allbutself,
+ 	.send_IPI_all			= x2apic_send_IPI_all,
+ 	.send_IPI_self			= x2apic_send_IPI_self,
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++	.send_IPI_allbutself_broadcast  = x2apic_send_IPI_allbutself_broadcast,
++	.send_IPI_all_broadcast     = x2apic_send_IPI_all_broadcast,
++#endif
+ 
+ 	.inquire_remote_apic		= NULL,
+ 
+diff --git a/src/linux/arch/x86/kernel/irqinit.c b/src/linux/arch/x86/kernel/irqinit.c
+index 1423ab1..68e5ba8 100644
+--- a/src/linux/arch/x86/kernel/irqinit.c
++++ b/src/linux/arch/x86/kernel/irqinit.c
+@@ -115,6 +115,8 @@ static void __init smp_intr_init(void)
+ 	alloc_intr_gate(CALL_FUNCTION_SINGLE_VECTOR,
+ 			call_function_single_interrupt);
+ 
++	alloc_intr_gate(TIMESTAMP_VECTOR, timestamp_interrupt);
++
+ 	/* Low priority IPI to cleanup after moving an irq */
+ 	set_intr_gate(IRQ_MOVE_CLEANUP_VECTOR, irq_move_cleanup_interrupt);
+ 	set_bit(IRQ_MOVE_CLEANUP_VECTOR, used_vectors);
+diff --git a/src/linux/arch/x86/kernel/smp.c b/src/linux/arch/x86/kernel/smp.c
+index 658777c..0096ecb 100644
+--- a/src/linux/arch/x86/kernel/smp.c
++++ b/src/linux/arch/x86/kernel/smp.c
+@@ -128,6 +128,36 @@ static void native_smp_send_reschedule(int cpu)
+ 	apic->send_IPI(cpu, RESCHEDULE_VECTOR);
+ }
+ 
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++void native_send_call_func_broadcast_ipi(bool exclude_self)
++{
++	if (exclude_self)
++		apic->send_IPI_allbutself_broadcast(CALL_FUNCTION_VECTOR);
++	else
++		apic->send_IPI_all_broadcast(CALL_FUNCTION_VECTOR);
++}
++
++#endif
++
++void native_timestamp_ipi(bool exclude_self)
++{
++	if (exclude_self)
++		apic->send_IPI_allbutself_broadcast(TIMESTAMP_VECTOR);
++	else
++		apic->send_IPI_all_broadcast(TIMESTAMP_VECTOR);
++}
++
++asmlinkage __visible void smp_timestamp_interrupt(void)
++{
++	smp_update_timestamp_ipi();
++	ack_APIC_irq();
++}
++
++asmlinkage __visible void smp_trace_timestamp_interrupt(void)
++{
++       smp_timestamp_interrupt();
++}
++
+ void native_send_call_func_single_ipi(int cpu)
+ {
+ 	apic->send_IPI(cpu, CALL_FUNCTION_SINGLE_VECTOR);
+@@ -216,7 +246,7 @@ static void native_stop_other_cpus(int wait)
+ 		while (num_online_cpus() > 1 && (wait || timeout--))
+ 			udelay(1);
+ 	}
+-	
++
+ 	/* if the REBOOT_VECTOR didn't work, try with the NMI */
+ 	if ((num_online_cpus() > 1) && (!smp_no_nmi_ipi))  {
+ 		if (register_nmi_handler(NMI_LOCAL, smp_stop_nmi_callback,
+@@ -351,5 +381,10 @@ struct smp_ops smp_ops = {
+ 
+ 	.send_call_func_ipi	= native_send_call_func_ipi,
+ 	.send_call_func_single_ipi = native_send_call_func_single_ipi,
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++	.send_call_func_broadcast_ipi = native_send_call_func_broadcast_ipi,
++#endif
++	.timestamp_ipi = native_timestamp_ipi,
++
+ };
+ EXPORT_SYMBOL_GPL(smp_ops);
+diff --git a/src/linux/include/linux/smp.h b/src/linux/include/linux/smp.h
+index c441407..b405816 100644
+--- a/src/linux/include/linux/smp.h
++++ b/src/linux/include/linux/smp.h
+@@ -95,6 +95,14 @@ extern void smp_cpus_done(unsigned int max_cpus);
+ int smp_call_function(smp_call_func_t func, void *info, int wait);
+ void smp_call_function_many(const struct cpumask *mask,
+ 			    smp_call_func_t func, void *info, bool wait);
++void smp_update_timestamp_ipi(void);
++
++DECLARE_PER_CPU_ALIGNED(u64, timestamp);
++void smp_update_timestamp(bool exclude_self);
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++void smp_call_function_broadcast(smp_call_func_t func, void *info, bool wait,
++				 bool exclude_self);
++#endif
+ 
+ int smp_call_function_any(const struct cpumask *mask,
+ 			  smp_call_func_t func, void *info, int wait);
+diff --git a/src/linux/kernel/smp.c b/src/linux/kernel/smp.c
+index 7416544..ca13857 100644
+--- a/src/linux/kernel/smp.c
++++ b/src/linux/kernel/smp.c
+@@ -27,6 +27,20 @@ struct call_function_data {
+ 	cpumask_var_t		cpumask;
+ };
+ 
++DEFINE_PER_CPU_ALIGNED(u64, timestamp);
++EXPORT_SYMBOL(timestamp);
++
++void smp_update_timestamp_ipi(void)
++{
++	*this_cpu_ptr(&timestamp) = rdtsc_ordered();
++}
++
++void smp_update_timestamp(bool exclude_self)
++{
++	arch_timestamp_ipi(exclude_self);
++}
++EXPORT_SYMBOL(smp_update_timestamp);
++
+ static DEFINE_PER_CPU_SHARED_ALIGNED(struct call_function_data, cfd_data);
+ 
+ static DEFINE_PER_CPU_SHARED_ALIGNED(struct llist_head, call_single_queue);
+@@ -469,6 +483,60 @@ void smp_call_function_many(const struct cpumask *mask,
+ }
+ EXPORT_SYMBOL(smp_call_function_many);
+ 
++#ifdef CONFIG_X2APIC_IPI_BROADCAST
++void smp_call_function_broadcast(smp_call_func_t func, void *info, bool wait,
++				 bool exclude_self)
++{
++	struct call_function_data *cfd;
++	int cpu, this_cpu = smp_processor_id();
++
++	/*
++	 * Can deadlock when called with interrupts disabled.
++	 * We allow cpu's that are not yet online though, as no one else can
++	 * send smp call function interrupt to this cpu and as such deadlocks
++	 * can't happen.
++	 */
++	WARN_ON_ONCE(cpu_online(this_cpu) && irqs_disabled()
++		     && !oops_in_progress && !early_boot_irqs_disabled);
++
++	cfd = this_cpu_ptr(&cfd_data);
++
++	cpumask_and(cfd->cpumask, cpu_online_mask, cpu_online_mask);
++	if (exclude_self)
++		cpumask_clear_cpu(this_cpu, cfd->cpumask);
++
++	/* Some callers race with other cpus changing the passed mask */
++	if (unlikely(!cpumask_weight(cfd->cpumask)))
++		return;
++
++	for_each_cpu(cpu, cfd->cpumask) {
++		struct call_single_data *csd = per_cpu_ptr(cfd->csd, cpu);
++
++		csd_lock(csd);
++		if (wait)
++			csd->flags |= CSD_FLAG_SYNCHRONOUS;
++		csd->func = func;
++		csd->info = info;
++		llist_add(&csd->llist, &per_cpu(call_single_queue, cpu));
++	}
++
++	/* Send a message to all CPUs in the map */
++	/* XXX: Here we go */
++	arch_send_call_function_ipi_broadcast(exclude_self);
++
++	if (wait) {
++		for_each_cpu(cpu, cfd->cpumask) {
++			struct call_single_data *csd;
++
++			csd = per_cpu_ptr(cfd->csd, cpu);
++			csd_lock_wait(csd);
++		}
++	}
++}
++EXPORT_SYMBOL(smp_call_function_broadcast);
++#endif
++
++
+ /**
+  * smp_call_function(): Run a function on all other CPUs.
+  * @func: The function to run. This must be fast and non-blocking.
+-- 
+1.9.1
+

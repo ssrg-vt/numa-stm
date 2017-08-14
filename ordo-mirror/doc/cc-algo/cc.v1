@@ -1,0 +1,45 @@
+o Transaction Tx has the following timestamps:
+ - rts: read timestamp
+ - cts: commit timestamp
+ - wts: write timestamp
+ - pts: the period for which the transaction has been active: for r/w and w/w
+   conflict
+
+o Following should be the invariants:
+ - For a read transaction:  t.wts + epoch <= cts + epoch <= t.rts
+ - For a write transaction: t.rts + epoch <= cts && v.wts + epoch <= cts
+
+o Read phase:
+ - retry:
+  - seq = read_tuple_seq(tuple);
+  - if (seq is odd)
+   - backoff
+   - goto retry
+  - load wts, rts and value from the tuple
+  - if (read_tuple_seq(tuple) != seq)
+   - goto retry
+
+o Validation phase:
+ - for w in sorted(t.WS): (sort write set in transaction T)
+  - lock(w.tuple)
+  - latest_temp_wts = w.tuple.wts (XXX: do we really need this?)
+ - while((cts = read_clock()) < latest_tmp_wts) (get commit timestamp)
+  - backoff
+ - for r in t.RS (validating the read set):
+  - seq_write_lock(tuple) (updates the sequence number of the tuple)
+  - if r.rts < cts + epoch
+   - if r.wts != r.tuple.wts ||
+        (r.tuple.rts + epoch <= cts &&
+         isLocked(r.tuple) &&
+         r.tuple not in t.WS)
+    - seq_write_unlock(tuple)
+    - abort()
+  - else
+   - r.tuple.rts = max(r.tuple.rts, cts)
+  - seq_write_unlock(tuple)
+
+o Write phase:
+ - for w in t.WS (write set of transaction T):
+  - update row value
+  - w.tuple.wts = w.tuple.rts = cts
+  - unlock(w.tuple)

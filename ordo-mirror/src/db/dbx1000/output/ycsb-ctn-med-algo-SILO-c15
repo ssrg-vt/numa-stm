@@ -1,0 +1,21 @@
+mem_allocator initialized!
+workload initialized!
+Query Queue Init Time 8.339807
+query_queue initialized!
+PASS! SimTime = 11881793160
+[tid=0] txn_cnt=978375,abort_cnt=904
+[tid=1] txn_cnt=976729,abort_cnt=917
+[tid=2] txn_cnt=985403,abort_cnt=873
+[tid=3] txn_cnt=985844,abort_cnt=862
+[tid=4] txn_cnt=988258,abort_cnt=929
+[tid=5] txn_cnt=988663,abort_cnt=934
+[tid=6] txn_cnt=981107,abort_cnt=883
+[tid=7] txn_cnt=984133,abort_cnt=955
+[tid=8] txn_cnt=981964,abort_cnt=906
+[tid=9] txn_cnt=978967,abort_cnt=946
+[tid=10] txn_cnt=1000000,abort_cnt=914
+[tid=11] txn_cnt=990997,abort_cnt=877
+[tid=12] txn_cnt=993519,abort_cnt=946
+[tid=13] txn_cnt=990669,abort_cnt=955
+[tid=14] txn_cnt=992641,abort_cnt=929
+[summary] txn_cnt=14797269, abort_cnt=13730, run_time=177.728662, time_wait=6.599574, time_ts_alloc=0.000000, time_man=0.000000, time_validate=33.216725, time_index=8.180782, time_abort=0.195727, time_cleanup=6.606924, latency=0.000012, deadlock_cnt=0, cycle_detect=0, dl_detect_time=0.000000, dl_wait_time=0.000000, time_query=0.478662, debug1=0.000000, debug2=0.000000, debug3=0.000000, debug4=0.000000, debug5=0.000000

@@ -1,0 +1,321 @@
+o main structs:
+    - rlu_thread_data:
+        - uniq_id;
+        - is_check_locks;
+        - is_write_detected;
+        - is_steal;
+        - type;
+        - max_write_sets;
+        ---
+        - run_counter;
+        - local_version;
+        - local_commit_version;
+        - is_no_quiescence;
+        - is_sync;
+        ---
+        - writer_versions;
+        ---
+        - wait_entry q_threads[MAX_THREADS];
+        - ws_head_counter;
+        - ws_tail_counter;
+        - ws_cur_id;
+        - obj_list obj_write_set[MAX_WRITE_SETS];
+        ---
+        - free_node_size;
+        - pointer to free_nodes[MAX_FREE_NODES];
+
+    - wait_entry
+        - char is_wait;
+        - long run_counter;
+
+    - obj_list
+        - writer_locks writer_locks;
+        - num_of_objs;
+        - pointer to p_cur;
+        - buffer[MAX_WRITE_SET_BUFFER];
+
+    - writer_locks:
+        - size;
+        - ids[MAX_NESTED_WRITER_LOCKS];
+
+NOTE:
+ - There is a known list of global thread info which is g_rlu_threads.
+ - Now, each rlu_thread_data_t has wait_entry_t which is used during the
+   quiescence period.
+
+- working code of benchmark:
+o rlu_list_add(self, htable, value): adds value to the hash bucket; self is
+                                        the thread local data
+    - htable will first find the list via hash calculation
+    - Following is the pseudocode:
+ =============================
+1)  restart:
+2)  acquire reader_lock(self);
+3)  obtains pointer to p_prev & p_next via RLU_DEREF
+     - p_prev = (node_t *)RLU_DEREF(self, (p_list->p_head));
+     - p_next = (node_t *)RLU_DEREF(self, (p_prev->p_next));
+4)  while (true) {
+5)  v = p_next->val;
+6)  if (v >= val) break;
+7)  p_prev = p_next;
+8)  p_next = RLU_DEREF(self, (p_prev->p_next));
+9)  }
+10) result = (v != val);
+11) if (result) {
+12)     if (!RLU_TRYLOCK(self, &p_prev)) {
+13)         RLU_ABORT(self); // abort the transaction
+14)         goto restart; // try again
+15)     }
+16)     if (!RLU_TRYLOCK(sefl, &p_next)) {
+17)         RLU_ABORT(self);
+18)         goto restart;
+19)     }
+20)     allocate new_node and assign value to new_node->val;
+21)     RLU_ASSIGN_PTR(self, &(new_node->p_next), p_next);
+22)     RLU_ASSIGN_PTR(self, &(p_prev->p_next), new_node);
+23) }
+24) release the reader_lock(self);
+ =============================
+o rlu_hash_list_contains(self, hash, value): checks the presence of value
+    - Following is the pseudocode:
+ =============================
+1)  acquire reader_lock(self);
+2)  obtains pointer to p_prev & p_next via RLU_DEREF:
+     - p_prev = (node_t *)RLU_DEREF(self, (p_list->p_head));
+     - p_next = (node_t *)RLU_DEREF(self, (p_prev->p_next));
+3)  while (true) {
+4)   - v = p_next->val;
+5)   - if (v >= value) break;
+6)   - p_prev = p_next;
+7)   - p_next = RLU_DEREF(self, (p_prev->p_next));
+8)   }
+9)  result = (v == val);
+10) release reader_lock(self);
+11) return result;
+ =============================
+o rlu_list_remove(self, htable, value): removes value from the hash bucket
+    - Almost same as rlu_list_add();
+
+now, the RLU API:
+o rlu_reader_lock(self):
+ - calls rlu_sync_checkpoint(self)
+ - calls rlu_reset(self);
+ - calls rlu_register_thread(self)
+ - resets self->is_steal to 0 if local_version and local_commit_version are same
+ - resets self->is_check_locks to 0 if both conditions are true:
+   - local_version is same as local_commit_version
+   - ws_tail_counter is same ws_wb_counter
+
+o rlu_sync_checkpoint(self):
+ - if is_sync is not set, then return
+ - else calls rlu_sync_and_writeback(self)
+
+o rlu_sync_and_writeback(self):
+ - if ws_tail_counter is same as ws_head_counter, then return
+ - calculate the ws_num = self->ws_tail_counter - self->ws_wb_counter
+ - now, increement the local writer version (self->writer_version) by 1
+   and then atomically update the global writer version (g_rlu_writer_version)
+ - call rlu_synchronize(self)
+ - calculate the ws_wb_num by calling rlu_writeback_sets_and_unlock(self)
+ - reset the local writer_version to MAX_VERSION
+ - atomically increment the global commit version (g_rlu_commit_version)
+ - reset the is_sync to 0
+ - call rlu_process_free(self)
+
+o rlu_synchronize(self):
+ - if is_no_quiescence is set, then return;
+ - calls rlu_init_quiescence(self)
+ - and then wait for quiescence period by calling rlu_wait_for_quiescence(self,
+                                                  self->writer_version)
+
+o rlu_init_quiescence(self):
+ - for i in thread_count:
+  - reset the self->q_threads[i].is_wait to 0; --> wait_entry
+  - update the self->wait_entry[i].run_counter to g_rlu_threads[i]->run_counter
+  - and if the wait_entry's run_counter is set, then set the is_wait to 1
+
+o rlu_wait_for_quiscence(self, version_limit):
+ - for i in thread_count:
+  - while self->q_threads[i].is_wait is true:
+   - if q_threads[i].run_counter != g_rlu_threads[i]->run_counter, then break
+   - if the value of version_limit is not 0 and g_rlu_threads[i].local_version >= version_limit,
+      then break
+  - return iters (something I don't know right now).
+
+o rlu_writeback_sets_and_unlock(self):
+ - for ws_counter = self->ws_wb_counter:self->ws_tail_counter
+  - call rlu_reset_write_set(self, ws_counter)
+ - update the self->ws_head_counter = self->ws_wb_counter
+ - for ws_counter = self->ws_wb_counter:self->ws_tail_counter
+  - call rlu_writeback_write_set(self, ws_counter)
+  - ws_wb_num++
+ - set self->ws_wb_counter = self->ws_tail_counter
+ return ws_wb_num
+
+o rlu_reset_write_set(self, ws_index):
+ /* this is related to the write set updates and relies on obj_list_t struct */
+ - resets self->obj_write_set[ws_index].num_of_objs = 0
+ - update the self->obj_write_set[ws_index].p_cur = obj_write_set[ws_index].buffer
+ - calls rlu_reset_writer_locks(self, ws_index)
+
+o rlu_reset_writer_locks(self, ws_index):
+ - resets self->obj_write_set[ws_index].writer_locks.size = 0
+
+o rlu_writeback_write_set(self, ws_index):
+ /* this is a bulky function that does the writes */
+ - get curent pointer:
+   p_cur = &self->obj_write_set[ws_index].buffer[0]
+ - for i in 0:self->obj_write_set[ws_index].num_of_objs
+  - get the header p_ws_obj_h = (rlu_ws_obj_header_t *)p_cur
+  - get p_obj_actual = p_ws_obj_h->p_obj_actual
+  - obj_size = p_ws_obj_h->obj_size
+  - forwards p_cur as: p_cur = p_cur + sizeof(rlu_ws_obj_header_t)
+  - gets object header as p_obj_h = (rlu_obj_header_t *)p_cur
+  - again forwards p_cur as p_cur = p_cur + sizeof(rlu_obj_header_t)
+  - then gets the object copy as p_obj_copy = p_cur
+  - copies the data to actual object pointer as memcpy(p_obj_actual, p_obj_copy)
+  - moves the p_cur again as p_cur = p_cur + sizeof(aligned obj_size)
+  - unlocks the actual object by calling p_obj_actual->..->p_obj_copy = NULL
+  /* this whole step is performed till num_of_objs */
+
+o rlu_process_free(self):
+ - frees all of the allocated nodes as:
+ - for i in 0:self->free_nodes_size:
+  - free(obj_to_header(self->free_noes[i]))
+
+o rlu_reset(self):
+ - self->is_write_detected = 0
+ - self->is_steal = 1
+ - self->is_check_locks = 1
+
+o rlu_register_thread(self):
+ - increments its self->run_counter by 1
+ - sets local_version and local_commit_version to globals ones respectively
+
+o rlu_reader_unlock(self):
+ - calls rlu_unregister_thread(self)
+ - if self->is_write_detected is true:
+  - resets self->is_write_detected to 0
+  - calls rlu_commit_write_set(self)
+  - calls rlu_release_writer_locks(self, self->ws_tail_counter - 1)
+ - else
+  - calls rlu_release_writer_locks(self, self->ws_cur_id)
+  - calls rlu_reset_writer_locks(self, self->ws_cur_id)
+ - calls rlu_sync_checkpoint(self)
+
+o rlu_unregister_thread(self):
+ - increase the self->run_counter by 1
+
+o rlu_commit_write_set(self):
+ - first move to the next write set:
+  - self->ws_tail_counter++
+  - self->ws_cur_id = self->ws_tail_counter
+ - sync and writeback if (1) all write sets are full or (2) aggregated MAX_ACTUAL_WRITE_SETS:
+  - if (self->ws_tail_counter == self->ws_head_counter) ||
+       (self->ws_tail_counter - sefl->ws_wb_counter >= self->max_write_sets)
+    - call rlu_sync_and_writeback(self)
+
+o rlu_release_writer_locks(self, ws_index):
+ - for i in 0:self->obj_write_set[ws_index].writer_locks.size:
+  - call rlu_release_writer_lock(self, self->obj_write_set[ws_index].writer_locks.ids[i])
+
+o rlu_release_writer_lock(self, writer_lock_id):
+ - reset global writer lock to 0 as g_rlu_writer_locks[writer_lock_id] = 0
+
+o RLU_DEREF(self, p_obj):
+ - return p_obj if self->is_check_locks = 0
+ - return p _obj if p_obj != NULL && p_obj_copy is NULL
+ - else calls rlu_deref_slow_path(self, p_obj)
+
+o rlu_deref_slow_path(self, p_obj):
+ - gets p_obj_copy as from p_obj
+ - if p_obj_copy == P_OBJ_COPY_ID (which is a fixed value) then return p_obj
+ - get p_ws_obj_h header as p_ws_obj_h = PTR_GET_WS_HEADER(p_Obj_copy)
+ - get the thread id for the p_ws_obj_h as tid = p_ws_obj_h->thread_id
+ - return p_obj_copy if tid == self->uniq_id since it has been locked by the
+   thread itself
+ - check for whether the object is locked by other thread by checking self->is_steal as:
+   if (self->is_steal && g_rlu_threads[tid]->writer_version <= self->local_version):
+  - return p_obj_copy because this thread has started afer the other thread has updated
+    the global writer version and this thread has correctly observed that copy of the
+    object is not NULL
+ - else return p_obj
+
+o RLU_TRY_LOCK(self, **obj): rlu_try_lock(self, **obj, obj_size):
+ - get obj p_obj = *obj
+ - get obj copy as p_obj_copy = GET_COPY(p_obj)
+ - if p_obj_copy == PTR_ID_OBJ_COPY (a constant) --> if (PTR_IS_COPY(p_obj_copY))
+  - then get p_obj and p_obj_copy again using GET_ACTUAL() and GET_COPY()
+ - if the object pointer is locked -- p_obj_copy != NULL then
+  - get ws object header as p_ws_obj_h = PTR_GET_WS_HEADER(p_obj_copy)
+  - get the thread id as tid = WS_GET_THREAD_ID(p_ws_obj_h)
+  - if tid == self->uniq_id then
+   - if (self->run_counter == WS_GET_RUN_COUNTER(p_ws_obj_h)) i.e. it is locked by the same thread:
+    - then update the pointer *obj = p_obj_copy and return 1
+   - else
+    - it is locked by other thread, return 0
+  - now, p_obj is also locked by other thread, send sync request to other thread
+    call rlu_send_sync_request(tid)
+    increment self->is_sync for syncing the thread and return 0
+ - else the p_obj is free, then:
+ - indicate that write set is updated as if (self->is_write_detected == 0):
+  - self->is_write_detected = 1; self->is_check_locks = 1
+ - call rlu_add_ws_obj_header_to_write_set(self, p_obj, obj_size) to add
+   write-set header for the object
+ - try atomic lock via CAS for p_obj for installing the copy as CAS(p_obj, 0, p_obj_copy) == 0:
+   - if this fails, then return 0;
+ - else lock was successful:
+  - call rlu_add_obj_copy_to_write_set(self, p_obj, obj_size) for adding to the write set
+  - update *obj = p_obj_copy
+  - return 1;
+
+o rlu_send_sync_request(tid):
+ - update increment is_sync variable by 1 as g_rlu_threads[tid]->is_sync++;
+
+o rlu_add_ws_obj_header_to_write_set(self, p_obj, obj_size):
+ - it adds a new ws_obj_header to self->obj_write_set;
+
+o rlu_add_obj_copy_to_write_set(self, p_obj, obj_size):
+ - get the p_cur from self->obj_write_set[self->ws_cur_id].p_cur
+ - copy the p_obj to p_cur
+ - update self->obj_write_set[self->ws_cur_id].p_cur = p_cur;
+ - update the number of objects in for obj_write_set[self->ws_cur_id].num_of_objs++;
+
+o rlu_abort(self):
+ - calls rlu_unregister_thread(self)
+ - if thread sync is required via self->is_write_detected, then
+  - self->is_write_detected = 0
+  - call rlu_unlock_objs(self, self->ws_tail_counter)
+  - call rlu_release_writer_locks(self, self->ws_cur_id)
+  - call rlu_reset_write_set(self, self->ws_tail_counter)
+ - else
+  - call rlu_relase_writer_locks(self, self->ws_cur_id)
+  - call rlu_reset_writer_locks(self, self->ws_cur_id)
+ - call rlu_sync_checkpoint(self)
+
+o rlu_unloc_objs(self, ws_index):
+ - unlock all the objects that are part of the obj_write_set for that particular
+   ws_index
+
+o RLU_ASSIGN_PTR(self, ptr, obj):
+ - updates the pointer
+
+o rlu_alloc(obj_size):
+ - allocate space for the object + the object header -- OBJ_HEADER_SIZE
+ - and set the p_obj_copy to NULL i.e. unlock and return H_TO_OBJ(ptr)
+
+o rlu_free(self, obj_ptr):
+ - if (self == NULL) free the whole object + header and return
+ - get the actual object as p_obj = GET_ACTUAL(p_obj)
+ - move it to the self->free_nodes[self->free_nodes_size] = p_obj
+ - update the self->free_noes_size by 1
+
+ NOTE:
+  - there are two atomic operations:
+   1) g_rlu_writer_version: it gets updated for each writer version before
+    writing the data to the memory
+   2) g_rlu_commit_version: it is udpated after all the data has been commited
+   to the memory.
+   Thus, if we only use 1 working object (i.e. no MVCC or no extra versions),
+   we can remove the g_rlu_commit_version which is even shown in the paper,
+   but cannot do for multiple copy versions. Need to think about this one!
