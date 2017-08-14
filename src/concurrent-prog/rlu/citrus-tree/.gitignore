@@ -1,0 +1,6 @@
+bench_rcu
+bench_rlu
+*.o
+cscope.*
+tags
+*.swp

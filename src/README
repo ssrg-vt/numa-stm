@@ -1,0 +1,7 @@
+Following are the directories:
+
+1) tt-benchmark: rdtsc() epoch howto
+2) db: all database related stuff here for the CC
+3) concurrent-prog: includes oplog and rlu/version prog stuff here
+    		     linux and fxmark source are for oplog
+4) micro: atomic operation testing and more benchmarks as we go along the way

@@ -1,0 +1,100 @@
+https://github.com/blitz/freebsd/commit/cdc5f872b3e48cc0dda031fc7d6bdedc65c3148f
+https://rwmj.wordpress.com/2010/10/15/kvm-pvclock/
+https://translate.google.com/translate?hl=en&sl=ja&u=http://kzlog.picoaccel.com/post-767/&prev=search
+https://lkml.org/lkml/2010/4/15/355
+https://patchwork.kernel.org/patch/9137051/
+http://www.gossamer-threads.com/lists/linux/kernel/2457154
+https://software.intel.com/en-us/forums/intel-isa-extensions/topic/280440
+    - the above links is opposite of what parsec is talking about!!
+https://software.intel.com/en-us/forums/intel-isa-extensions/topic/332570
+https://software.intel.com/en-us/forums/software-tuning-performance-optimization-platform-monitoring/topic/388964
+https://software.intel.com/en-us/forums/intel-isa-extensions/topic/332570
+    - The time-stamp counter on recent Intel processors is reset to zero each
+    time the processor package has RESET asserted. From that point onwards the
+    invariant TSC will continue to tick constantly across frequency changes,
+    turbo mode and ACPI C-states. All parts that see RESET synchronously will
+    have their TSC's completely synchronized. This synchronous distribution of
+    RESET is required for all sockets connected to a single PCH. For multi-node
+    systems RESET might not be synchronous.
+    The biggest issue with TSC synchronization across multiple
+    threads/cores/packages is the ability for software to write the TSC. The
+    TSC is exposed as MSR 0x10. Software is able to use WRMSR 0x10 to set the
+    TSC. However, as the TSC continues as a moving target, writing it is not
+    guaranteed to be precise. For example a SMI (System Management Interrupt)
+    could interrupt the software flow that is attempting to write the
+    time-stamp counter immediately prior to the WRMSR. This could mean the
+    value written to the TSC could vary by thousands to millions of clocks.
+https://lkml.org/lkml/2008/9/25/451
+https://github.com/torvalds/linux/blob/master/arch/x86/kernel/tsc_sync.c
+    - tsc_sync between two cores
+http://oliveryang.net/2015/09/pitfalls-of-TSC-usage/
+    pitfalls of tsc usage (can be handled in the kernel)
+http://www.spinics.net/lists/kvm/msg125039.html
+http://www.spinics.net/lists/kvm/msg127215.html
+http://www.spinics.net/lists/kvm/msg127774.html
+http://comments.gmane.org/gmane.comp.emulators.kvm.devel/147527
+http://www.spinics.net/lists/kvm/msg128268.html
+    - kvmclock
+http://www.ntp.org/database/time_pub.html
+    - time synchronization related references
+http://www.ntp.org/ntpfaq/NTP-s-related.htm#Q-MILLS-SPEAK
+http://www.ntp.org/ntpfaq/NTP-s-sw-clocks-quality.htm
+    - clocks are going to drift, whoever it is
+https://lkml.org/lkml/2005/11/4/173
+    - old AMD description about TSC
+https://lwn.net/Articles/209168/
+    - tsc unstable--- quite old link
+https://lwn.net/Articles/667593/
+    - Read-mostly research in 2015
+"Alexander Matveev (MIT), Nir Shavit (MIT and Tel-Aviv University), Pascal
+Felber (University of Neuchâtel), and Patrick Marlier (also University of
+Neuchâtel) recently published a Symposium on Operating Systems Principles
+(SOSP) paper titled “Read-Log-Update: A Lightweight Synchronization Mechanism
+for Concurrent Programming [PDF]”, which can be thought of as a software
+    transactional memory (STM) extension that includes explicitly marked
+    read-only transactions. However, unlike RCU readers, these read-only
+    transactions are guaranteed to see a point-in-time snapshot of the union of
+    all RLU-protected data structures across multiple traversals. Of course,
+    this does impose significant additional overhead on RLU updaters, as they
+    acknowledge in their Figure 7, which shows RLU updaters being 2-5 times
+    slower than RCU updaters. That said, this figure shows a benchmark that
+    favors RCU rather heavily. With or without the point-in-time snapshots, I
+    believe that their realization of the importance of explicitly marking
+    read-only operations is a great step forward. Updates to shared variables
+    are also explicitly marked, providing performance benefits over pure STM
+    similar to those of SwissTM [PDF].
+    Their technique scales reasonably well up to 16 CPUs, however, this is a
+    very small system for modern non-mobile workloads. They do have one graph
+    (uppermost graph in Figure 8) that goes up to 80 CPUs, but this shows poor
+    scalability. My first thought was that this poor scalability was due to
+    their single global counter that is atomically incremented on each update,
+    but this did not make sense because RLU is outperforming RCU. Instead, the
+    culprit seems to be the need to hold locks across grace periods. Because
+    RCU optimizes for low per-update overhead at the expense of grace-period
+    latency, and because synchronize_rcu() was used (instead of call_rcu() or
+    synchronize_rcu_expedited()), holding locks across grace periods hurts RCU
+    even more than it hurts RLU. Once again, I recommend either releasing locks
+    before waiting for grace periods or using the asynchronous call_rcu()
+    primitive: Both approaches avoid degraded scalability. In (thankfully rare)
+    Linux-kernel cases where it is absolutely necessary to wait for grace
+    periods while holding a mutex, the synchronize_rcu_expedited() APIs can be
+    used, though these are not particularly good for realtime applications
+    (with the exception of synchronize_srcu_expedited()).
+    Their performance testing includes both user-space and Linux-kernel
+    scenarios. In the Linux-kernel scenarios shown in Figure 9, their
+    list-traversal code beat that of the Linux kernel by a surprisingly large
+    margin. In an impressive display of good sportsmanship, one of the authors
+    (Marlier) located the Linux-kernel performance bottleneck and submitted a
+    fix that causes the Linux kernel's lists to outperform those of the paper.
+    The problem was a single non-atomic store and load to an unshared location
+    in the running task's stack, with no memory barriers. It appears that
+    current microprocessors' pipelines can be a bit slow to handle a load from
+    a location that the current CPU just stored to. Patrick eliminated this
+    store and load, and his patch was accepted during the v4.4 merge window."
+https://lwn.net/Articles/574962/
+    - Tick broadcast framework: still does one by one IPI
+https://software.intel.com/en-us/articles/best-timing-function-for-measuring-ipp-api-timing/
+    - One guy (Vipin) says that the all cores/CPUs/packages are synchronized
+      after Nehalem which have one PCH.
+      I disagree as there is no specification which says that it happens,
+      + even if agreed to it... all 8 sockets have 2 PCHs.

@@ -1,0 +1,74 @@
+- Extreme case to break the general notion of consistency which
+  people think is correct:
+  - physical timestamping
+  - time-based reclamation
+  - commit phase in the concurrency control and TL2
+  -- Reproduce by writing a simple microbenchmark!
+
+- Check threadsanitizer that also uses a scalaer clock
+  - https://github.com/google/sanitizers/wiki/ThreadSanitizerAlgorithm
+  - May be a good candidate for improving the scalability of
+    threadsanitizer?
+- NOTE: be careful about the benchmarking any of the aforementioned stuff:
+  -- MEMORY is the DEVIL --, even STO made the stupid mistake of running
+  TL2 without jemmalloc, whereas they ran sto with jemalloc. We will get
+  weird numbers if we do that.
+  Also, stamp is not a good benchmark for evaluating on large NUMA machines.
+  High level problems:
+  - benchmarks like to sleep a lot
+  - too much memory allocation (taxes the memory allocator)
+  - no notion of transaction scheduling (a huge potential for NUMA machines)
+  - even design like TM2C should be revisited.
+- Using true time to gauge the RCU reader preemption problem from the
+  hypervisor side.
+- The 120 core machine has the highest store to load latency as well as the
+offset between two cores. Need another opinion on the code. However, the same
+code gives me the same result on both goldbug and optimus. Quite strange!
+- 17.14.2 IA32_TSC_AUX Register and RDTSCP Support (page 2519) specifies
+that IA32_TSC_AUX can be used to synchronize CPUs across NUMA machines which
+is not done.
+ - ART specifies that TSC is updated at a constant frequency since it relies
+ on the core's crystal.
+https://patchwork.kernel.org/patch/8487711/ -- Always Running Timer (ART)
+- Linux does not have any broadcast mechanism for the IPIs, it serializes the
+  IPI transmissions (see apic.c)
+- Now, generally, there is nothing like North Bridge, it is already incorporated
+  in the processor package. Now, each chipset has one platform controller hub
+  (PCH) that combines some remaining functions of North bridge like clock,
+  2 interrupt 8259 controllers---master and slave, pci, sata controller etc.
+- Currently, almost on each Intel machine, they have 25Mhz crystal clock that
+  is used by various components in the chipset at a higher frequency like
+  100MHz/96MHz/32MHz etc. The frequency is modulated to such frequency by
+  clock synthesizer and differential databuffer (see datasheet) for this
+  purpose.
+  mp-spec.pdf (refs/120core-info) is a must read who want to understand the
+  apic stuff (quite interesting).
+- The major reason for RLU to not scale is the lock acquisition for both
+  read and write phase. This is a pessimistic approach from the CC point of
+  view.
+  However, if we look at the vlist paper (http://dl.acm.org/citation.cfm?id=2928285)
+  it follows the ideology of MVCC model, therefore works way better and scales
+  properly even at 129 core.
+  vlist is able to sustain even under high load, i.e. it's thourghput drops
+  by a million while going from 1% to 10% to 50% to 100% updates. On the
+  other handl RLU is the winner if there are almost no writes i.e. it is
+  8x faster even than RCU at 0.1% writes but it's performance severely degrades
+  as we inrcease the writes. It can't keep up with the writes as it cannot even
+  complete a single update operation in a microsecond which is not the case
+  with other algorithms.
+- use SuperMalloc for doing these benchmarks on large machine, it has an edge
+  over jemalloc.
+  What I have seen is this: SuperMalloc > jemalloc > tcmalloc >> glibc malloc
+- Replace the rcu of masstree with rlu and see the performance?
+- True time usecases:
+        - inotify (git?)
+        - rmap (exim / gmake / fuzzing / apache?)
+        - dcache (apache)
+        - Timstamped CC in database: silo? / dbx1000? (Doppel -- OSDI14)
+            - MVCC is a better choice in this case compared to the OCC
+        - RLU - global clock notion is present -- read heavy case
+        - garbage collection in case of masstree (apsys paper) or any generic one?
+        - dthreads + conversion (eurosys paper)
+        - deterministic threading + epoch (no global barriers) --> barriers are now epoch
+        - STM --> haskell STM, STO, TL2, and many more
+        - relaxing commutativity based on timestamps (sv6)

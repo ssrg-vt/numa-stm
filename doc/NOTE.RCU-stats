@@ -1,0 +1,11 @@
+Grace period duration can be measured by enabling the following tracepoint and
+suitably processing the trace file:
+
+echo 1 > /sys/kernel/debug/tracing/events/rcu/rcu_grace_period/enable
+
+However, if you wanted to know how Prudence memory allocator measured the grace
+periods, then the integration of Prudence with RCU helped to do that.
+
+Memory consumption was measured with the information from /sys/kernel/slab/*.
+You need to enable SLUB statistics while building the kernel. We also added few
+custom tracepoints in the memory allocator code for couple of measurements.

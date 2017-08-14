@@ -1,0 +1,102 @@
+image: stefankaestle/gcc
+
+before_script:
+  - "apt-get update; apt-get install -y git libnuma-dev build-essential"
+
+# BUILD
+# --------------------------------------------------
+
+stages:
+  - sanity
+  - build
+  - test
+
+sanity:
+  stage: sanity
+  script:
+    - "scripts/fix_headers.sh"
+
+compile:
+  stage: build
+  artifacts:
+    paths:
+      - test/*-test
+      - lib*.so
+    expire_in: 1 week
+  script:
+    - make
+
+debug-compile:
+  stage: build
+  script:
+    - "BUILDTYPE=debug make"
+
+clang-compile:
+  stage: build
+  script:
+    - "apt-get update; apt-get install -y clang"
+    - "CLANG=1 make"
+    - "export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH"
+    - "test/queuepair-test ump"
+    - "test/context-test ump"
+#   - "test/channel-test" << this one did not terminate for me
+
+# EXECUTE
+# --------------------------------------------------
+
+basetest:
+  stage: test
+  dependencies:
+    - compile
+  script:
+    - "export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH"
+    - "test/queuepair-test ump"
+    - test/context-test
+    - test/channel-test
+
+shmtest:
+  stage: test
+  dependencies:
+    - compile
+  script:
+    - "export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH"
+    - "test/queuepair-test shm"
+    - test/shm-queue-test
+
+fftest:
+  stage: test
+  dependencies:
+    - compile
+  script:
+    - "export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH"
+    - "test/queuepair-test ffq"
+
+buildmodeltest:
+  stage: test
+  dependencies:
+    - compile
+  script:
+    - "apt-get update; apt-get install -y wget cpuid python python-numpy hwloc"
+    - "export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH"
+    - "scripts/create_model.sh -d"
+
+# Valgrind
+# --------------------------------------------------
+valgrind:
+  stage: test
+  script:
+    - "apt-get update; apt-get install -y valgrind"
+    - "export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH"
+    - "BUILDTYPE=valgrind make"
+    - "valgrind --fair-sched=yes --leak-check=yes test/queuepair-test ump 100"
+
+# STREAMCLUSTER
+# --------------------------------------------------
+streamcluster:
+  stage: test
+  dependencies:
+    - compile
+  script:
+    - "apt-get update; apt-get install -y git wget unzip liblua5.2-dev"
+    - "scripts/test_streamcluster.sh build"
+    - "scripts/test_streamcluster.sh test"

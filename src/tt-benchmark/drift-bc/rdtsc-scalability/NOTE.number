@@ -1,0 +1,72 @@
+Each thread does the following operations on its own local variable
+
+rdtsc()
+-------
+1 cores completed total tput 86113299.000000, avg: 8.61e+07
+2 cores completed total tput 203651294.000000, avg: 1.02e+08
+4 cores completed total tput 398612893.000000, avg: 9.97e+07
+8 cores completed total tput 797348692.000000, avg: 9.97e+07
+15 cores completed total tput 1494838193.000000, avg: 9.97e+07
+30 cores completed total tput 2973739485.000000, avg: 9.91e+07
+45 cores completed total tput 4464514345.000000, avg: 9.92e+07
+60 cores completed total tput 5954042051.000000, avg: 9.92e+07
+75 cores completed total tput 7445519744.000000, avg: 9.93e+07
+90 cores completed total tput 8934606007.000000, avg: 9.93e+07
+105 cores completed total tput 10424251435.000000, avg: 9.93e+07
+120 cores completed total tput 11903221292.000000, avg: 9.92e+07
+135 cores completed total tput 12724060017.000000, avg: 9.43e+07
+150 cores completed total tput 13534204274.000000, avg: 9.02e+07
+165 cores completed total tput 14341563357.000000, avg: 8.69e+07
+180 cores completed total tput 15153472589.000000, avg: 8.42e+07
+195 cores completed total tput 15956837407.000000, avg: 8.18e+07
+210 cores completed total tput 16782081453.000000, avg: 7.99e+07
+225 cores completed total tput 17590706394.000000, avg: 7.82e+07
+240 cores completed total tput 18378740481.000000, avg: 7.66e+07
+
+
+rdtscp()
+-------
+1 cores completed total tput 708370002.000000, avg: 7.08e+07
+2 cores completed total tput 1375904092.000000, avg: 6.88e+07
+4 cores completed total tput 2695237659.000000, avg: 6.74e+07
+8 cores completed total tput 5388444468.000000, avg: 6.74e+07
+15 cores completed total tput 10092826885.000000, avg: 6.73e+07
+30 cores completed total tput 20161859656.000000, avg: 6.72e+07
+45 cores completed total tput 30228410886.000000, avg: 6.72e+07
+60 cores completed total tput 40284809459.000000, avg: 6.71e+07
+75 cores completed total tput 50330492285.000000, avg: 6.71e+07
+90 cores completed total tput 60379031755.000000, avg: 6.71e+07
+105 cores completed total tput 70418991397.000000, avg: 6.71e+07
+120 cores completed total tput 80452417547.000000, avg: 6.7e+07
+135 cores completed total tput 85658375424.000000, avg: 6.35e+07
+150 cores completed total tput 90839721428.000000, avg: 6.06e+07
+165 cores completed total tput 96101272942.000000, avg: 5.82e+07
+180 cores completed total tput 101373571059.000000, avg: 5.63e+07
+195 cores completed total tput 106566734337.000000, avg: 5.46e+07
+210 cores completed total tput 111727762447.000000, avg: 5.32e+07
+225 cores completed total tput 116947470476.000000, avg: 5.2e+07
+240 cores completed total tput 121950534708.000000, avg: 5.08e+07
+
+
+xchg()
+-----
+1 cores completed total tput 1284960124.000000, avg: 1.28e+08
+2 cores completed total tput 2199226628.000000, avg: 1.1e+08
+4 cores completed total tput 4892285599.000000, avg: 1.22e+08
+8 cores completed total tput 9785799396.000000, avg: 1.22e+08
+15 cores completed total tput 18039216930.000000, avg: 1.2e+08
+30 cores completed total tput 36346575888.000000, avg: 1.21e+08
+45 cores completed total tput 54655077205.000000, avg: 1.21e+08
+60 cores completed total tput 72960604437.000000, avg: 1.22e+08
+75 cores completed total tput 91517513983.000000, avg: 1.22e+08
+90 cores completed total tput 109504620384.000000, avg: 1.22e+08
+105 cores completed total tput 128047655964.000000, avg: 1.22e+08
+120 cores completed total tput 145983746242.000000, avg: 1.22e+08
+135 cores completed total tput 148716059034.000000, avg: 1.1e+08
+150 cores completed total tput 151530645965.000000, avg: 1.01e+08
+165 cores completed total tput 154224478335.000000, avg: 9.35e+07
+180 cores completed total tput 156956436740.000000, avg: 8.72e+07
+195 cores completed total tput 159713862673.000000, avg: 8.19e+07
+210 cores completed total tput 162412141876.000000, avg: 7.73e+07
+225 cores completed total tput 165254230917.000000, avg: 7.34e+07
+240 cores completed total tput 167835404051.000000, avg: 6.99e+07

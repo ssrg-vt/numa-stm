@@ -1,0 +1,6 @@
+- Do we really need a hypercall for notifying the hypervisor?
+  - One approach is to check during the VMExit and have a deadline
+  scheduling priority for once. The RCU readers will keep on running
+  for a predefined duration and will then be kicked out. After that,
+  all we need to do is check the vcpu spin variable again and downgrade
+  the scheduling policy to a normal.

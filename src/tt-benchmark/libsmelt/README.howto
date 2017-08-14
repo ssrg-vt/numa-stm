@@ -1,0 +1,3 @@
+# Running the script
+- Run the command ./script/create_model.sh to generate the pairwise RTT which
+  we may need for our experiments.

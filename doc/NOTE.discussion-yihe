@@ -1,0 +1,15 @@
+> When I first came across the RLU paper at SOSP, its global version sort of
+> made me uncomfortable. It's interesting that you are able to make it so much
+> better simply by changing the API! I'd love to hear more about it if
+> possible.
+>
+> Almost all STM systems maintain global versions for something called
+> "opacity" -- a property that a transaction shall abort immediately upon
+> observing an inconsistent state. The Transactional Locking II (TL2) system
+> you mentioned, for example, has an explicit global clock. This paper:
+> http://mcg.cs.tau.ac.il/papers/hillel-avni-msc.pdf is probably a good
+> summary of all such global version schemes used in STM systems.
+>
+> There is also work in the database community like this one:
+> http://people.csail.mit.edu/yxy/pubs/tictoc.pdf. This particular design
+> looks amazing but I'm not able to reproduce the results so far...

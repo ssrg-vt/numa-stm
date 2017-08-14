@@ -1,0 +1,7 @@
+
+0. for x in 1000:
+1.    broadcast APIC interrupt to all CPUs
+2.    interrupt handler of each CPU
+3.       CPU_i = rdtscp()
+4.    esplion_x = max_diff(CPU_i, for all i)
+5. epsilon = min(epsilon_x)

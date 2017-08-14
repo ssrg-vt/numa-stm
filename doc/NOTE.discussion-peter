@@ -1,0 +1,110 @@
+Discussion with Peter Zijlstra
+
+-1-
+
+If all is well, there is no observable drift in TSC.
+
+Intel guarantees this up to 4 sockets IIRC, if you want to build bigger
+machines, you need to develop custom hardware, and while this custom
+bridge chippery _can_ do the right thing, Intel does not have any
+control over it.
+
+> On Thu, Dec 15, 2016 at 8:04 AM, Peter Zijlstra <peterz@infradead.org> wrote:
+> > When switching between the unstable and stable variants it is
+> > currently possible that clock discontinuities occur.
+> >
+> > And while these will mostly be 'small', attempt to do better.
+> >
+> > As observed on my IVB-EP, the sched_clock() is ~1.5s ahead of the
+> > ktime_get_ns() based timeline at the point of switchover
+> > (sched_clock_init_late()) after SMP bringup.
+> >
+> > Equally, when the TSC is later found to be unstable -- typically
+> > because SMM tries to hide its SMI latencies by mucking with the TSC --
+> > we want to avoid large jumps.
+> >
+> > Since the clocksource watchdog reports the issue after the fact we
+> > cannot exactly fix up time, but since SMI latencies are typically
+> > small (~10ns range), the discontinuity is mainly due to drift between
+> > sched_clock() and ktime_get_ns() (which on my desktop is ~79s over
+> > 24days).
+
+The drift here is between the fixed rate sched_clock() and the NTP
+adjusted ktime_get_ns().
+
+While both clocks will be TSC driven, they will end up with a different
+rate and hence drift.
+
+-2-
+
+On Sun, Feb 19, 2017 at 03:15:49PM -0500, Sanidhya Kashyap wrote:
+> Thanks for response!
+>
+> > If all is well, there is no observable drift in TSC.
+> >
+> > Intel guarantees this up to 4 sockets IIRC, if you want to build bigger
+> > machines, you need to develop custom hardware, and while this custom
+> > bridge chippery _can_ do the right thing, Intel does not have any
+> > control over it.
+> >
+> What about the Intel E7-8*** processors that can support up to 8 sockets?
+
+I _think_ that requires the extra glue logic not supplied by Intel. That
+is, afaik (and I'm really not an authority here) the regular Intel
+chipsets do not go beyond 4 sockets.
+[SK]: The chipset on optimus and 120 core machine does support up to 8 sockets.
+
+As stated, the glue logic _can_ do the right thing, but since it will be
+developed by a third party, no guarantees.
+
+> The reason why I am asking is what if we can leverage TSC to design
+> synchronization mechanisms and concurrency control mechanisms that start
+> to suffer from coherence traffic as we go beyond certain core count.
+
+So IIRC, TSC is defined synchronized over the cache coherence protocol,
+so while individual CPU TSC _can_ have a few cycles wobble, it must not
+be enough to be observable across CPUs.
+
+So if CPU-A stores its RDTSC in memory and CPU-B loads that value and
+compares it to its own RDTSC, then it must be strictly older, etc.
+
+[SK]: Does it really mean that it is synchronized? I don't think that this
+guarantees the clocks are synchronized.
+
+> I have some more question regarding calculating the TSC offset. Have
+> you tried to
+> calculate the TSC offset between two cores. What I want to establish is the
+> guaranteed minimal measured offset between two cores which we would like
+> to use to design algorithms or scaling concurrency mechanisms. It would be
+> great to get some insight from your end.
+
+As per the above, 0 :-). See also arch/x86/kernel/tsc_sync.c, it does
+something along the lines of what I described above to test TSC is
+indeed synchronized across cores. If it finds this not to be the case,
+it yells really loudly at boot (and disqualifies TSC as clocksource).
+
+> The way I have thought is as follows. First is physical theoretical
+> offset that is
+> between two cores during the system initilization (RESET interrupt deliver)
+> and second one is the observed offset which I can calculate with two methods:
+> 1) Use the coherence protocol as a medium
+> 2) Broadcast interrupts to all the cores that store the timestamp.
+
+So seeing that the upper bound on the TSC wobble is set by the coherence
+protocol, this _should_ yield a coherent view of the world.
+
+Note that IPIs are 'slow', tsc_sync does polling ping-pong between two
+CPUs.
+
+
+Now, there's a few flies in the soup though; a number of BIOS vendors
+think its _awesome_ to hide their SMI latency by doing a save/restore of
+the local TSC value across their SMIs.
+
+Also, we've recently discovered a new flavour BIOS of crazy that seems
+to reset the logical TSC at logical CPU (warm) reset. So when you bring
+up your CPUs with the software reset vector (as one does at boot and cpu
+hotplug etc..) you end up with a different TSC offset on each CPU.
+
+Again, we try and detect these things, and fix them up where possible,
+but typically we get really sad and yell at BIOS monkeys.

@@ -1,0 +1,34 @@
+Sanidhya,
+
+Thanks for the question!
+
+On non-NUMA machines, it is simple as as a single update to a location the rest
+of the cores are spinning on followed by a rdtsc on each core, and finally a
+comparison of the rdtsc values tends to be sufficient if run enough times.  You
+just have to make sure that you're synchronizing using the store to load
+latency, and there aren't any complex coherency operations happening (beyond
+the likes of invalidate and load shared).  Instigating the barrier on different
+cores allows you to correct for the storing thread's divergent latency.  On
+NUMA machines, cache-coherency latency between sockets needs to be measured,
+and used to adjust the results using the previous technique, depending on the
+interconnect and CC implementation, you might need to use a hierarchical
+barrier network.
+
+In the end, you can't get a perfect measurement, but you can get a reasonable
+measurement, and then (as in Parsec) adjust comparisons by a "confidence-level"
+amount.
+
+We've found the Linux kernel tends to do a good job synchronizing the TSCs.
+
+
+
+--------------
+
+My memory serves that it was around 2400 cycles.  I'm not sure if this is
+currently documented anywhere (if it is, it would be in the Speck paper).
+
+--------------
+
+IIRC, the offset is no more than 2k cycles last time we measured. That was on a
+4 socket machine with hyper threading disabled, so 40 physical cores.
+

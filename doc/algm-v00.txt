@@ -1,0 +1,68 @@
+============================================================
+Fig 3. of the RLU:SOSP15 paper
+============================================================
+
+* Two techniques
+(1) read-side retry
+(2) limiting write rate less than epsilon
+
+
+------------------------------------------------------------
+* T1
+------------------------------------------------------------
+(1) l-clock = rdtscp()
+(2) read O1 (not locked)
+(3) read O2
+    if (l-clock > T2.w-closk) {
+      steal new copy from T2.w-log
+    }
+    else if (l-clock < T2.w-closk) {
+      read O2
+    }
+    else {
+       /* l-clock is within the epsilon boundary */
+       while((l-clock = rdtscp()) is less than epsilon boundary) {
+          ; /* do nothing */
+       }
+       goto (2)
+    }
+(4) ... done
+
+------------------------------------------------------------
+* T2
+------------------------------------------------------------
+(1) l-clock = rdtscp()
+(2) read O1 (not locked)
+(3) read O2 (not locked)
+(4) log O2 and lock
+(5) update O2 in w-log
+(6) log O3 and lock
+(7) update O3 in w-log
+(9) while(true) {
+       while (((temp-w-clock = rdtscp()) - (temp-prev-w-clock = prev-w-clock)) < epsilon) {
+          ; /* do nothing */
+       }
+       if (smp_cas(&prev-w-clock, temp-prev-w-clock, temp-w-clock)) {
+          w-clock = temp-w-clock;
+          break;
+       }
+    }
+(A) wait for readers
+(B) write back w-log
+
+------------------------------------------------------------
+* T3
+------------------------------------------------------------
+(1) l-clock = rdtscp()
+(2) read O2 locked by T2
+    if (l-clock > T2.w-closk) {
+      steal new copy from T2.w-log
+    }
+    else if (l-clock < T2.w-closk) {
+      read O2
+    }
+    else {
+       /* l-clock is within the epsilon boundary */
+       goto (1)
+    }
+(3) ... done
