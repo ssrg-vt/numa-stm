@@ -1409,7 +1409,7 @@ backoff (Thread* Self, long attempt)
 __INLINE__ long
 TryFastUpdate (Thread* Self)
 {
-	Log* wr;
+//	Log* wr;
 #ifdef TL2_OPTIM_HASHLOG
         long numLog = Self->wrSet.numLog;
         Log* logs = Self->wrSet.logs;
