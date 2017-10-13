@@ -1,6 +1,7 @@
 #ifndef TM_HPP
 #define TM_HPP 1
 
+#include <stdlib.h>
 #include <numa.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -22,7 +23,7 @@
 #include "rand_r_32.h"
 #include "WriteSet.hpp"
 #include "locktable.hpp"
-
+#include "BitFilter.hpp"
 
 #ifdef DEBUG
 
@@ -45,6 +46,7 @@ extern int logiTM;
 
 using stm::WriteSetEntry;
 using stm::WriteSet;
+using stm::BitFilter;
 
 struct pad_word_t
   {
@@ -143,12 +145,81 @@ struct Tx_Context {
 	bool granted_writes[ACCESS_SIZE];
 	WriteSet* writeset;
 	bool touched_zones[8];
+	BitFilter<1024> ws;
+	BitFilter<1024> rs;
 	long commits =0, aborts =0, count=0, internuma =0, mineNotChanged=0;
 	int backoff;
 	unsigned int seed;
 #ifdef STATISTICS
 #endif
 };
+
+//QUEUE ==================================================
+//# of thread per zone is limited, max we have is 24
+#define QUEUE_MAX 50
+
+struct queue_item {
+	BitFilter<1024> * ws;
+	uintptr_t commit_time;
+	bool ready;
+};
+
+struct queue {
+	queue_item items[QUEUE_MAX];//# of thread per zone is limited, max we have is 24
+	pad_word_t tail;
+	pad_word_t head;
+};
+
+FORCE_INLINE void init_queue(queue * q) {
+	q->head.val = 0;
+	q->tail.val = 0;
+	for (int i=0; i<QUEUE_MAX; i++) {
+		q->items[i].ready = false;
+	}
+}
+
+FORCE_INLINE queue_item* enqueue(queue * q, BitFilter<1024> * ws, uintptr_t commit_time) {
+	uintptr_t tail = __sync_fetch_and_add(&q->tail.val, 1) % QUEUE_MAX;
+	q->items[tail].commit_time = commit_time;
+	q->items[tail].ws = ws;
+	q->items[tail].ready = true;
+	return &q->items[tail];
+}
+
+FORCE_INLINE queue_item dequeue(queue * q) {
+	queue_item ret;
+	ret.ws = NULL;
+	if (q->tail.val != q->head.val) {
+		uintptr_t head = q->head.val % QUEUE_MAX;
+		if (q->items[head].ready) {
+			ret.commit_time = q->items[head].commit_time;
+			ret.ws = q->items[head].ws;
+			q->items[head].ready = false;
+			q->head.val++;
+		}
+	}
+	return ret;
+}
+
+FORCE_INLINE void remove_top(queue * q) {
+	if (q->tail.val != q->head.val) {
+		q->items[q->head.val % QUEUE_MAX].ready = false;
+		q->head.val++;
+	}
+}
+
+
+FORCE_INLINE queue_item* queue_top(queue * q) {
+	if (q->tail.val != q->head.val) {
+		uintptr_t head = q->head.val % QUEUE_MAX;
+		if (q->items[head].ready) {
+			return &q->items[head];
+		}
+	}
+	return NULL;
+}
+
+//===================================================================
 
 extern __thread Tx_Context* Self;
 
@@ -165,6 +236,7 @@ struct pad_msg_t
 
 extern pad_msg_t* comm_channel[ZONES];
 
+extern queue* zone_queues[ZONES];
 
 
 #define TM_TX_VAR	Tx_Context* tx = (Tx_Context*)Self;
@@ -242,7 +314,7 @@ FORCE_INLINE T tm_read(T* addr, Tx_Context* tx, int numa_zone)
 
 
 	uint64_t index = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
-	lock_entry* entry_p = &(lock_table[numa_zone][index]);
+	lock_entry* entry_p = &(lock_table[tx->numa_zone][index]);
 
 	uint64_t v1 = entry_p->version;
 	T val = *addr;
@@ -252,7 +324,8 @@ FORCE_INLINE T tm_read(T* addr, Tx_Context* tx, int numa_zone)
 	}
 	int r_pos = tx->reads_pos++;
 	tx->reads[r_pos] = index;
-	tx->r_zone[r_pos] = numa_zone;
+	tx->r_zone[r_pos] = tx->numa_zone;
+	tx->rs.add(addr);
 	return val;
 }
 
@@ -263,9 +336,10 @@ FORCE_INLINE void tm_write(T* addr, T val, char size, Tx_Context* tx, int numa_z
     if (!alreadyExists) {//TOOD use the writeset to lock!!
 		int w_pos = tx->writes_pos++;
 		tx->writes[w_pos] = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
-		tx->w_zone[w_pos] = numa_zone;
-    	tx->touched_zones[numa_zone] = true;
+		tx->w_zone[w_pos] = tx->numa_zone;
+    	tx->touched_zones[tx->numa_zone] = true;
 		tx->granted_writes[w_pos] = false;
+		tx->ws.add(addr);
     }
 }
 
@@ -412,12 +486,14 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx){}
 
 FORCE_INLINE void tm_sys_init() {
-	printf("ORDO!");
+	printf("ORDO REP!\n");
 	for (int i=0; i<ZONES;i++) {
 		lock_table[i] = numa_alloc_onnode(sizeof(lock_entry) * TABLE_SIZE, i);//create_lock_table(i);
 		ts_vectors[i] = numa_alloc_onnode(sizeof(ts_vector), i); //create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY1);
 		ts_loc[i] = numa_alloc_onnode(sizeof(ts_vector), i);//create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY2);
 		ts_loc[i]->val = 0;
+		zone_queues[i] = numa_alloc_onnode(sizeof(queue), i);
+		init_queue(zone_queues[i]);
 		for (int j=0; j<ZONES; j++)
 			ts_vectors[i]->val[j] = 1;
 		//tx->timestamps[i] = create_shared_mem(i, sizeof(pad_word_t));
@@ -442,10 +518,35 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		return;
 	}
 
+	uintptr_t commit_ts = read_tsc() << LOCKBIT;
+	queue_item* q;
+
+	queue_item* my_entry = enqueue(zone_queues[tx->numa_zone], &tx->ws, commit_ts);
+
+	for (int i=0; i < ZONES; i++) {
+		if (i != tx->numa_zone) {
+			bool again;
+			do {
+				again = false;
+				q = queue_top(zone_queues[i]);
+				if (q != NULL && commit_ts > q->commit_time) {
+					spin64();
+					again = true;
+				}
+				/*else if (q != NULL && q->commit_time - commit_ts < CLOCK_DIFF) {
+					int k = (CLOCK_DIFF - (q->commit_time - commit_ts)) / 10;
+					while (k-- >= 0) {
+						asm volatile ("pause");
+					}
+				}*/
+			} while(again);
+		}
+	}
+
 	bool failed = false;
 	for (int i = 0; i < tx->writes_pos; i++) {
 		//TODO check timestamp also
-		int srv_addr = tx->w_zone[i];
+		int srv_addr = tx->numa_zone;// w_zone[i];
 		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
 		if (entry_p->lock_owner == (tx->id + 1)) continue;
 		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
@@ -457,13 +558,22 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	if (failed) { //unlock and abort
 		for (int i = 0; i < tx->writes_pos; i++) {
 			if (tx->granted_writes[i]) {
-				int srv_addr = tx->w_zone[i];
+				int srv_addr = tx->numa_zone;
 				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
 				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
 				//tx->granted_writes[i] = false;
 			} else {
 				break;
 			}
+		}
+		q = queue_top(zone_queues[tx->numa_zone]);
+		if (q == my_entry) {
+			remove_top(zone_queues[tx->numa_zone]);
+			while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+				remove_top(zone_queues[tx->numa_zone]);
+			}
+		} else {
+			my_entry->ready = false;
 		}
 
 		tm_abort(tx, 0);
@@ -473,7 +583,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
  	bool do_abort = false;
 	//validate reads
 	for (int i = 0; i < tx->reads_pos; i++) {
-		int srv_addr = tx->r_zone[i];
+		int srv_addr = tx->numa_zone;
 		lock_entry* entry_p = &(lock_table[srv_addr][tx->reads[i]]);
 		if (entry_p->version > tx->start_time[0]) {
 			do_abort = true;
@@ -483,12 +593,21 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	if (do_abort) {
 		for (int i = 0; i < tx->writes_pos; i++) {
 			if (tx->granted_writes[i]) {
-				int srv_addr = tx->w_zone[i];
+				int srv_addr = tx->numa_zone;
 				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
 				entry_p->lock_owner = 0;
 			} else {
 				break;
 			}
+		}
+		q = queue_top(zone_queues[tx->numa_zone]);
+		if (q == my_entry) {
+			remove_top(zone_queues[tx->numa_zone]);
+			while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+				remove_top(zone_queues[tx->numa_zone]);
+			}
+		} else {
+			my_entry->ready = false;
 		}
 		tm_abort(tx, 0);
 	}
@@ -507,12 +626,24 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	//update versions & unlock
 	for (int i = 0; i < tx->writes_pos; i++) {
-		int srv_addr = tx->w_zone[i];
-		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-		entry_p->version = next_ts;
-		entry_p->lock_owner = 0;
+		for (int j=0; j<ZONES; j++) {
+			lock_entry* entry_p = &(lock_table[j][tx->writes[i]]);
+			entry_p->version = next_ts;
+			if (j == tx->numa_zone) {
+				entry_p->lock_owner = 0;
+			}
+		}
 	}
 
+	q = queue_top(zone_queues[tx->numa_zone]);
+	if (q == my_entry) {
+		remove_top(zone_queues[tx->numa_zone]);
+		while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+			remove_top(zone_queues[tx->numa_zone]);
+		}
+	} else {
+		my_entry->ready = false;
+	}
 
 	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
 	tx->commits++;
@@ -534,6 +665,8 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 			tx->granted_writes_pos =0;							\
 			tx->writeset->reset();								\
 			tx->count++;		\
+			tx->ws.clear(); \
+			tx->rs.clear(); \
 			tx->start_time[0] = read_tsc() << LOCKBIT;
 
 /*tx->count++;		\

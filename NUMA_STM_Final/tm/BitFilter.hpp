@@ -21,11 +21,6 @@
 #define STM_CPU_X86
 
 #include <stdint.h>
-#include <stdio.h>
-//#include "rtm.h"
-//#include "SpookyV2.h"
-
-#define STM_USE_SSE_
 
 #if defined(STM_USE_SSE)
 #include <xmmintrin.h>
@@ -38,6 +33,8 @@
 
 namespace stm
 {
+
+#define ALWAYS_INLINE __attribute__((always_inline)) inline
   /**
    *  This is a simple Bit vector class, with SSE2 optimizations
    */
@@ -63,12 +60,10 @@ namespace stm
       } __attribute__((aligned(16)));
 
       /*** simple hash function for now */
-      FORCE_INLINE
+      ALWAYS_INLINE
       static uint32_t hash(const void* const key)
       {
-//          return (((uintptr_t)key) >> 3) % BITS;
-//    	  return SpookyHash::Hash64(&key, 8, 0) % BITS;
-    	  return (((uintptr_t)key) >> 3) % BITS;
+          return (((uintptr_t)key) >> 3) % BITS;
       }
 
     public:
@@ -77,7 +72,7 @@ namespace stm
       BitFilter() { clear(); }
 
       /*** simple bit set function */
-      FORCE_INLINE
+      ALWAYS_INLINE
       void add(const void* const val) volatile
       {
           const uint32_t index  = hash(val);
@@ -87,7 +82,7 @@ namespace stm
       }
 
       /*** simple bit set function, with strong ordering guarantees */
-      FORCE_INLINE
+      ALWAYS_INLINE
       void atomic_add(const void* const val) volatile
       {
           const uint32_t index  = hash(val);
@@ -103,7 +98,7 @@ namespace stm
       }
 
       /*** simple lookup */
-      FORCE_INLINE
+      ALWAYS_INLINE
       bool lookup(const void* const val) const volatile
       {
           const uint32_t index  = hash(val);
@@ -113,12 +108,10 @@ namespace stm
           return word_filter[block] & (1u << offset);
       }
 
-
       /*** simple union */
-      FORCE_INLINE
+      ALWAYS_INLINE
       void unionwith(const BitFilter<BITS>& rhs)
       {
-    	  //SSE inside HTM is harmful (more aborts)
 #ifdef STM_USE_SSE
           for (uint32_t i = 0; i < VEC_BLOCKS; ++i)
               vec_filter[i] = _mm_or_si128(vec_filter[i], rhs.vec_filter[i]);
@@ -128,44 +121,8 @@ namespace stm
 #endif
       }
 
-
-
-      volatile unsigned diff_lock = 0;
-
-      //TODO is these optimizations really effective?
-      /*** simple difference */
-      FORCE_INLINE
-      void differencewith(const BitFilter<BITS>& rhs)
-      {
-
-    	  while(diff_lock) { __asm__ ( "pause;" ); }
-    	  unsigned status;
-    	  if ((status = _xbegin()) == _XBEGIN_STARTED) {
-    		  if (diff_lock) {
-    			  _xabort(1);
-    		  }
-//          while(!__sync_bool_compare_and_swap(&diff_lock, 0, 1));
-#ifdef STM_USE_SSE
-			  for (uint32_t i = 0; i < VEC_BLOCKS; ++i)
-				  vec_filter[i] = _mm_andnot_si128(vec_filter[i], rhs.vec_filter[i]);
-#else
-			  for (uint32_t i = 0; i < WORD_BLOCKS; ++i)
-				  word_filter[i] &= ~rhs.word_filter[i];
-#endif
-			  _xend();
-//          diff_lock = 0;
-    	  } else {
-    		  do {
-    			  while(diff_lock) { __asm__ ( "pause;" ); }
-    		  } while (!__sync_bool_compare_and_swap(&diff_lock, 0, 1));
-    		  for (uint32_t i = 0; i < WORD_BLOCKS; ++i)
-				  word_filter[i] &= ~rhs.word_filter[i];
-    		  diff_lock = 0;
-    	  }
-      }
-
       /*** a fast clearing function */
-      FORCE_INLINE
+      ALWAYS_INLINE
       void clear() volatile
       {
 #ifdef STM_USE_SSE
@@ -180,7 +137,7 @@ namespace stm
       }
 
       /*** a bitwise copy method */
-      FORCE_INLINE
+      ALWAYS_INLINE
       void fastcopy(const volatile BitFilter<BITS>* rhs) volatile
       {
 #ifdef STM_USE_SSE
@@ -193,42 +150,8 @@ namespace stm
       }
 
       /*** intersect two vectors */
-      FORCE_INLINE
-      bool intersect(const BitFilter<BITS>* rhs, const BitFilter<BITS>& excludes) const volatile
+      ALWAYS_INLINE bool intersect(const BitFilter<BITS>* rhs) const volatile
       {
-    	  //SSE inside HTM is harmful (more aborts)
-#ifdef STM_USE_SSE
-          // There is no clean way to compare an __m128i to zero, so we have
-          // to union it with an array of uint64_ts, and then we can look at
-          // the vector 64 bits at a time
-          union {
-              __m128i v;
-              uint64_t i[2];
-          } tmp;
-          tmp.v = _mm_setzero_si128();
-          for (uint32_t i = 0; i < VEC_BLOCKS; ++i) {
-              __m128i intersect =
-                  _mm_and_si128(const_cast<BitFilter<BITS>*>(this)->
-                                vec_filter[i],
-                                rhs->vec_filter[i]);
-              tmp.v = _mm_or_si128(tmp.v, intersect);
-          }
-
-          return tmp.i[0]|tmp.i[1];
-#else
-          for (uint32_t i = 0; i < WORD_BLOCKS; ++i)
-              if (word_filter[i] & rhs->word_filter[i] & ~excludes.word_filter[i])
-                  return true;
-          return false;
-#endif
-      }
-
-
-      /*** intersect two vectors */
-      FORCE_INLINE
-      bool intersect(const BitFilter<BITS>* rhs) const volatile
-      {
-    	  //SSE inside HTM is harmful (more aborts)
 #ifdef STM_USE_SSE
           // There is no clean way to compare an __m128i to zero, so we have
           // to union it with an array of uint64_ts, and then we can look at

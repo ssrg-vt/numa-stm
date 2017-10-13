@@ -54,7 +54,7 @@ void* th_run(void * args)
 	int id = ((long)args >> 4) & 0xFF;
     int numa_zone = (long) args & 0xF;
     int index = (long) args >> 20;
-    //printf("my id %d and zone %d (index %d)\n", id, numa_zone, index);
+    printf("my id %d and zone %d (index %d)\n", id, numa_zone, index);
     	
     	long* accounts = accountsAll[0];
 
@@ -75,15 +75,21 @@ void* th_run(void * args)
 	    //printf("cpus per node = %d\n", cpu_per_node);
 
 	    numa_bitmask_clearall(mask);
-	    numa_bitmask_setbit(mask, numa_zone * cpu_per_node + (id % cpu_per_node));
+	    numa_bitmask_setbit(mask, numa_zone * cpu_per_node + ((id
+
+#ifdef RTC
+	    		+1
+#endif
+				)% cpu_per_node)
+	    );
 	    if (numa_sched_setaffinity(0, mask)) {
 	    	perror("numa_sched_setaffinity");
 			exit(-1);
 	    }
 	    numa_free_cpumask(mask);
 
-//	    int curcpu = sched_getcpu();
-//	    printf("%d:%d cpu set to %d\n", id, numa_zone, curcpu);
+	    int curcpu = sched_getcpu();
+	    printf("%d:%d cpu set to %d\n", id, numa_zone, curcpu);
 
 		  thread_init(id, numa_zone, index);
 		  //printf("Thread waiting\n");
@@ -145,8 +151,8 @@ void* th_run(void * args)
 //					TM_WRITE_Z(accounts2[acc2[j]], TM_READ_Z(accounts2[acc2[j]], (numa_zone +1)%ZONES) - 50, (numa_zone +1)%ZONES);
 //					once = false;
 //				} else {
-					TM_WRITE(accounts[acc1[j]], TM_READ(accounts[acc1[j]]) + 50);
-					TM_WRITE(accounts[acc2[j]], TM_READ(accounts[acc2[j]]) - 50);
+					TM_WRITE_Z(accounts[acc1[j]], TM_READ_Z(accounts[acc1[j]],0) + 50,0);
+					TM_WRITE_Z(accounts[acc2[j]], TM_READ_Z(accounts[acc2[j]],0) - 50,0);
 //				}
 			}
 		TM_END
@@ -201,7 +207,7 @@ int main(int argc, char* argv[])
 	tm_sys_init();
 
 	if (argc < 2) {
-		printf("Usage test threads_per_zone#\n");
+		printf("Usage test threads#\n");
 		exit(0);
 	}
 
@@ -210,7 +216,7 @@ int main(int argc, char* argv[])
 //	  }
 
     int th_per_zone = atoi(argv[1]);
-	total_threads = th_per_zone? th_per_zone * ZONES : 1;
+	total_threads = th_per_zone? th_per_zone : 1;
 
 	for (int j=0; j < ZONES; j++) {
 		accountsAll[j] = (long*) numa_alloc_onnode(sizeof(long) * ACCOUT_NUM, j);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
@@ -224,19 +230,29 @@ int main(int argc, char* argv[])
 		}
 	printf("init sum = %llu\n", initSum);
 
+    bitmask* mask = numa_allocate_cpumask();
+
+    //get # of cpu per node
+    numa_node_to_cpus(0, mask);
+    int cpu_per_node = 0;
+    while(numa_bitmask_isbitset(mask, cpu_per_node)) {
+    	cpu_per_node++;
+    }
+	printf("cpus per node = %d\n", cpu_per_node);
+
+
 	pthread_attr_t thread_attr;
 	pthread_attr_init(&thread_attr);
 
 	pthread_t client_th[300];
 	int ids = 1;
-	for (int j=0; j < ZONES; j++) {
-		for (int i = 0; i<th_per_zone; i++) {
-			if (j==0 && i==0) continue;
-			long encodedInfo = (i << 20) | (ids << 4) | j;
+//	for (int j=0; j < ZONES; j++) {
+		for (int i = 1; i<th_per_zone; i++) {
+			long encodedInfo = (i << 20) | (ids << 4) | (i/cpu_per_node);
 			pthread_create(&client_th[ids-1], &thread_attr, th_run, (void*)encodedInfo);
 			ids++;
 		}
-	}
+//	}
 
 	th_run(0);
 	//printf("jj= %d, x= %d\n", jj, x);

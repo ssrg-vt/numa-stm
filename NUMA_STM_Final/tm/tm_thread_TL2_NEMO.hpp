@@ -37,7 +37,6 @@ extern int logiTM;
 
 #define ZONES 4
 
-#define RTC
 
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define CACHELINE_BYTES 64
@@ -52,7 +51,6 @@ struct pad_word_t
       volatile uintptr_t val;
       char pad[CACHELINE_BYTES-sizeof(uintptr_t)];
   };
-
 
 struct ts_vector
   {
@@ -103,8 +101,9 @@ inline uint64_t tick()
 #define PROCESS_NUM 8
 
 struct tm_obj {
-	uint64_t id;
-	uint64_t ver;
+	uint64_t owner;
+	uint64_t ver; //2 bit for state are used
+
 };
 
 #define MAX_BATCH 8
@@ -129,7 +128,6 @@ struct grant_batch_msg {
 //Tx context
 struct Tx_Context {
 	int id;
-	int index;
 	int numa_zone;
 	jmp_buf scope;
 	uintptr_t start_time[8];
@@ -244,18 +242,17 @@ FORCE_INLINE T tm_read(T* addr, Tx_Context* tx, int numa_zone)
 		return (T) log.val.i64;
 
 
-	uint64_t index = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
-	lock_entry* entry_p = &(lock_table[numa_zone][index]);
+    tm_obj * obj = (tm_obj *) addr;
 
-	uint64_t v1 = entry_p->version;
+	uint64_t v1 = obj->ver;
 	T val = *addr;
-	uint64_t v2 = entry_p->version;
-	if (v1 > tx->start_time[0] || (v1 != v2) || entry_p->lock_owner) {
+	//TODO Barrier needed
+	uint64_t v2 = obj->ver;
+	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->ver & LOCKBIT)) {
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
-	tx->reads[r_pos] = index;
-	tx->r_zone[r_pos] = numa_zone;
+	tx->reads[r_pos] = addr;
 	return val;
 }
 
@@ -378,7 +375,6 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 		Self = new Tx_Context();
 		Tx_Context* tx = (Tx_Context*)Self;
 		tx->id = id;//__sync_fetch_and_add(&tm_thread_count, 1);
-		tx->index = index;
 		tx->seed = tx->id;
 		tx->numa_zone = numa_zone;
 		//mpass_create_message_end_point(tx->id, PROCESS_COUNT);
@@ -410,15 +406,40 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 //				//tx->timestamps[i] = get_shared_mem(i, sizeof(pad_word_t));
 //			}
 //		}
-		comm_channel[numa_zone][index].tx = tx;
 	}
 }
 
-FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx)
+FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx){}
+
+FORCE_INLINE void tm_sys_init() {
+	printf("ORDO!");
+	for (int i=0; i<ZONES;i++) {
+		lock_table[i] = numa_alloc_onnode(sizeof(lock_entry) * TABLE_SIZE, i);//create_lock_table(i);
+		ts_vectors[i] = numa_alloc_onnode(sizeof(ts_vector), i); //create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY1);
+		ts_loc[i] = numa_alloc_onnode(sizeof(ts_vector), i);//create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY2);
+		ts_loc[i]->val = 0;
+		for (int j=0; j<ZONES; j++)
+			ts_vectors[i]->val[j] = 1;
+		//tx->timestamps[i] = create_shared_mem(i, sizeof(pad_word_t));
+	}
+}
+
+
+FORCE_INLINE void tm_abort(Tx_Context* tx, int explicitly)
+{
+	tx->aborts++;
+
+	//exp_backoff(tx);
+
+	//restart the tx
+    longjmp(tx->scope, 1);
+}
+
+FORCE_INLINE void tm_commit(Tx_Context* tx)
 {
 	if (tx->writeset->size() == 0) { //read-only
 		tx->commits++;
-		return COMMIT_RSLT;
+		return;
 	}
 
 	bool failed = false;
@@ -445,7 +466,7 @@ FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx)
 			}
 		}
 
-		return ABORT_RSLT;
+		tm_abort(tx, 0);
 	}
 
 	//TODO check lock also
@@ -469,7 +490,7 @@ FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx)
 				break;
 			}
 		}
-		return ABORT_RSLT;
+		tm_abort(tx, 0);
 	}
 
 	tx->writeset->writeback();
@@ -493,142 +514,8 @@ FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx)
 	}
 
 
-//	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
+	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
 	tx->commits++;
-
-	return COMMIT_RSLT;
-}
-
-
-void* server_run(void * args);
-
-FORCE_INLINE void tm_sys_init() {
-	pthread_attr_t thread_attr;
-	pthread_attr_init(&thread_attr);
-
-	pthread_t server_th[ZONES];
-
-	for (int i=0; i<ZONES;i++) {
-		lock_table[i] = numa_alloc_onnode(sizeof(lock_entry) * TABLE_SIZE, i);//create_lock_table(i);
-		ts_vectors[i] = numa_alloc_onnode(sizeof(ts_vector), i); //create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY1);
-		ts_loc[i] = numa_alloc_onnode(sizeof(ts_vector), i);//create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY2);
-		comm_channel[i] = numa_alloc_onnode(sizeof(pad_msg_t) * 50, i);
-		ts_loc[i]->val = 0;
-		for (int j=0; j<ZONES; j++)
-			ts_vectors[i]->val[j] = 1;
-
-		for (int j=0; j < 50; j++) {
-			comm_channel[i][j].ready = 0; //make them all inactive inititally
-		}
-		//tx->timestamps[i] = create_shared_mem(i, sizeof(pad_word_t));
-
-		pthread_create(&server_th[i], &thread_attr, server_run, (void*)i);
-	}
-}
-
-
-FORCE_INLINE void tm_abort(Tx_Context* tx, int explicitly)
-{
-	tx->aborts++;
-
-	//exp_backoff(tx);
-
-	//restart the tx
-    longjmp(tx->scope, 1);
-}
-
-FORCE_INLINE void tm_commit(Tx_Context* tx)
-{
-	pad_msg_t* my_channel;
-	my_channel = &(comm_channel[tx->numa_zone][tx->index]);
-
-	my_channel->result = 0;
-
-	my_channel->ready = 1;
-
-	while(!my_channel->result) ;
-
-	if (my_channel->result == ABORT_RSLT) tm_abort(tx, 0);
-
-//	if (tx->writeset->size() == 0) { //read-only
-//		tx->commits++;
-//		return;
-//	}
-
-//	bool failed = false;
-//	for (int i = 0; i < tx->writes_pos; i++) {
-//		//TODO check timestamp also
-//		int srv_addr = tx->w_zone[i];
-//		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//		if (entry_p->lock_owner == (tx->id + 1)) continue;
-//		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
-//			failed = true;
-//			break;
-//		}
-//		tx->granted_writes[i] = true;
-//	}
-//	if (failed) { //unlock and abort
-//		for (int i = 0; i < tx->writes_pos; i++) {
-//			if (tx->granted_writes[i]) {
-//				int srv_addr = tx->w_zone[i];
-//				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
-//				//tx->granted_writes[i] = false;
-//			} else {
-//				break;
-//			}
-//		}
-//
-//		tm_abort(tx, 0);
-//	}
-
-	//TODO check lock also
-// 	bool do_abort = false;
-//	//validate reads
-//	for (int i = 0; i < tx->reads_pos; i++) {
-//		int srv_addr = tx->r_zone[i];
-//		lock_entry* entry_p = &(lock_table[srv_addr][tx->reads[i]]);
-//		if (entry_p->version > tx->start_time[0]) {
-//			do_abort = true;
-//		}
-//	}
-//
-//	if (do_abort) {
-//		for (int i = 0; i < tx->writes_pos; i++) {
-//			if (tx->granted_writes[i]) {
-//				int srv_addr = tx->w_zone[i];
-//				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//				entry_p->lock_owner = 0;
-//			} else {
-//				break;
-//			}
-//		}
-//		tm_abort(tx, 0);
-//	}
-
-//	tx->writeset->writeback();
-//
-//	uintptr_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->ready[0], 1);
-//
-//	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-//		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-//		while (i-- >= 0) {
-//			asm volatile ("pause");
-//		}
-//		next_ts = read_tsc() << LOCKBIT;
-//	}
-//
-//	//update versions & unlock
-//	for (int i = 0; i < tx->writes_pos; i++) {
-//		int srv_addr = tx->w_zone[i];
-//		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//		entry_p->version = next_ts;
-//		entry_p->lock_owner = 0;
-//	}
-//
-//
-//	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
-//	tx->commits++;
 
 }
 

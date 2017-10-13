@@ -1,6 +1,7 @@
 #ifndef TM_HPP
 #define TM_HPP 1
 
+#include <stdlib.h>
 #include <numa.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -22,7 +23,7 @@
 #include "rand_r_32.h"
 #include "WriteSet.hpp"
 #include "locktable.hpp"
-
+#include "BitFilter.hpp"
 
 #ifdef DEBUG
 
@@ -37,7 +38,6 @@ extern int logiTM;
 
 #define ZONES 4
 
-#define RTC
 
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define CACHELINE_BYTES 64
@@ -46,13 +46,13 @@ extern int logiTM;
 
 using stm::WriteSetEntry;
 using stm::WriteSet;
+using stm::BitFilter;
 
 struct pad_word_t
   {
       volatile uintptr_t val;
       char pad[CACHELINE_BYTES-sizeof(uintptr_t)];
   };
-
 
 struct ts_vector
   {
@@ -129,7 +129,6 @@ struct grant_batch_msg {
 //Tx context
 struct Tx_Context {
 	int id;
-	int index;
 	int numa_zone;
 	jmp_buf scope;
 	uintptr_t start_time[8];
@@ -146,12 +145,81 @@ struct Tx_Context {
 	bool granted_writes[ACCESS_SIZE];
 	WriteSet* writeset;
 	bool touched_zones[8];
+	BitFilter<1024> ws;
+	BitFilter<1024> rs;
 	long commits =0, aborts =0, count=0, internuma =0, mineNotChanged=0;
 	int backoff;
 	unsigned int seed;
 #ifdef STATISTICS
 #endif
 };
+
+//QUEUE ==================================================
+//# of thread per zone is limited, max we have is 24
+#define QUEUE_MAX 50
+
+struct queue_item {
+	BitFilter<1024> * ws;
+	uintptr_t commit_time;
+	bool ready;
+};
+
+struct queue {
+	queue_item items[QUEUE_MAX];//# of thread per zone is limited, max we have is 24
+	pad_word_t tail;
+	pad_word_t head;
+};
+
+FORCE_INLINE void init_queue(queue * q) {
+	q->head.val = 0;
+	q->tail.val = 0;
+	for (int i=0; i<QUEUE_MAX; i++) {
+		q->items[i].ready = false;
+	}
+}
+
+FORCE_INLINE queue_item* enqueue(queue * q, BitFilter<1024> * ws, uintptr_t commit_time) {
+	uintptr_t tail = __sync_fetch_and_add(&q->tail.val, 1) % QUEUE_MAX;
+	q->items[tail].commit_time = commit_time;
+	q->items[tail].ws = ws;
+	q->items[tail].ready = true;
+	return &q->items[tail];
+}
+
+FORCE_INLINE queue_item dequeue(queue * q) {
+	queue_item ret;
+	ret.ws = NULL;
+	if (q->tail.val != q->head.val) {
+		uintptr_t head = q->head.val % QUEUE_MAX;
+		if (q->items[head].ready) {
+			ret.commit_time = q->items[head].commit_time;
+			ret.ws = q->items[head].ws;
+			q->items[head].ready = false;
+			q->head.val++;
+		}
+	}
+	return ret;
+}
+
+FORCE_INLINE void remove_top(queue * q) {
+	if (q->tail.val != q->head.val) {
+		q->items[q->head.val % QUEUE_MAX].ready = false;
+		q->head.val++;
+	}
+}
+
+
+FORCE_INLINE queue_item* queue_top(queue * q) {
+	if (q->tail.val != q->head.val) {
+		uintptr_t head = q->head.val % QUEUE_MAX;
+		if (q->items[head].ready) {
+			return &q->items[head];
+		}
+	}
+	return NULL;
+}
+
+//===================================================================
 
 extern __thread Tx_Context* Self;
 
@@ -168,6 +236,7 @@ struct pad_msg_t
 
 extern pad_msg_t* comm_channel[ZONES];
 
+extern queue* zone_queues[ZONES];
 
 
 #define TM_TX_VAR	Tx_Context* tx = (Tx_Context*)Self;
@@ -245,7 +314,7 @@ FORCE_INLINE T tm_read(T* addr, Tx_Context* tx, int numa_zone)
 
 
 	uint64_t index = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
-	lock_entry* entry_p = &(lock_table[numa_zone][index]);
+	lock_entry* entry_p = &(lock_table[tx->numa_zone][index]);
 
 	uint64_t v1 = entry_p->version;
 	T val = *addr;
@@ -255,7 +324,8 @@ FORCE_INLINE T tm_read(T* addr, Tx_Context* tx, int numa_zone)
 	}
 	int r_pos = tx->reads_pos++;
 	tx->reads[r_pos] = index;
-	tx->r_zone[r_pos] = numa_zone;
+	tx->r_zone[r_pos] = tx->numa_zone;
+	tx->rs.add(addr);
 	return val;
 }
 
@@ -266,9 +336,10 @@ FORCE_INLINE void tm_write(T* addr, T val, char size, Tx_Context* tx, int numa_z
     if (!alreadyExists) {//TOOD use the writeset to lock!!
 		int w_pos = tx->writes_pos++;
 		tx->writes[w_pos] = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
-		tx->w_zone[w_pos] = numa_zone;
-    	tx->touched_zones[numa_zone] = true;
+		tx->w_zone[w_pos] = tx->numa_zone;
+    	tx->touched_zones[tx->numa_zone] = true;
 		tx->granted_writes[w_pos] = false;
+		tx->ws.add(addr);
     }
 }
 
@@ -378,7 +449,6 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 		Self = new Tx_Context();
 		Tx_Context* tx = (Tx_Context*)Self;
 		tx->id = id;//__sync_fetch_and_add(&tm_thread_count, 1);
-		tx->index = index;
 		tx->seed = tx->id;
 		tx->numa_zone = numa_zone;
 		//mpass_create_message_end_point(tx->id, PROCESS_COUNT);
@@ -410,119 +480,23 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 //				//tx->timestamps[i] = get_shared_mem(i, sizeof(pad_word_t));
 //			}
 //		}
-		comm_channel[numa_zone][index].tx = tx;
 	}
 }
 
-FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx)
-{
-	if (tx->writeset->size() == 0) { //read-only
-		tx->commits++;
-		return COMMIT_RSLT;
-	}
-
-	bool failed = false;
-	for (int i = 0; i < tx->writes_pos; i++) {
-		//TODO check timestamp also
-		int srv_addr = tx->w_zone[i];
-		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-		if (entry_p->lock_owner == (tx->id + 1)) continue;
-		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
-			failed = true;
-			break;
-		}
-		tx->granted_writes[i] = true;
-	}
-	if (failed) { //unlock and abort
-		for (int i = 0; i < tx->writes_pos; i++) {
-			if (tx->granted_writes[i]) {
-				int srv_addr = tx->w_zone[i];
-				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
-				//tx->granted_writes[i] = false;
-			} else {
-				break;
-			}
-		}
-
-		return ABORT_RSLT;
-	}
-
-	//TODO check lock also
- 	bool do_abort = false;
-	//validate reads
-	for (int i = 0; i < tx->reads_pos; i++) {
-		int srv_addr = tx->r_zone[i];
-		lock_entry* entry_p = &(lock_table[srv_addr][tx->reads[i]]);
-		if (entry_p->version > tx->start_time[0]) {
-			do_abort = true;
-		}
-	}
-
-	if (do_abort) {
-		for (int i = 0; i < tx->writes_pos; i++) {
-			if (tx->granted_writes[i]) {
-				int srv_addr = tx->w_zone[i];
-				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-				entry_p->lock_owner = 0;
-			} else {
-				break;
-			}
-		}
-		return ABORT_RSLT;
-	}
-
-	tx->writeset->writeback();
-
-	uintptr_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
-
-	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-		while (i-- >= 0) {
-			asm volatile ("pause");
-		}
-		next_ts = read_tsc() << LOCKBIT;
-	}
-
-	//update versions & unlock
-	for (int i = 0; i < tx->writes_pos; i++) {
-		int srv_addr = tx->w_zone[i];
-		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-		entry_p->version = next_ts;
-		entry_p->lock_owner = 0;
-	}
-
-
-//	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
-	tx->commits++;
-
-	return COMMIT_RSLT;
-}
-
-
-void* server_run(void * args);
+FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx){}
 
 FORCE_INLINE void tm_sys_init() {
-	pthread_attr_t thread_attr;
-	pthread_attr_init(&thread_attr);
-
-	pthread_t server_th[ZONES];
-
+	printf("ORDO REP!\n");
 	for (int i=0; i<ZONES;i++) {
 		lock_table[i] = numa_alloc_onnode(sizeof(lock_entry) * TABLE_SIZE, i);//create_lock_table(i);
 		ts_vectors[i] = numa_alloc_onnode(sizeof(ts_vector), i); //create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY1);
 		ts_loc[i] = numa_alloc_onnode(sizeof(ts_vector), i);//create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY2);
-		comm_channel[i] = numa_alloc_onnode(sizeof(pad_msg_t) * 50, i);
 		ts_loc[i]->val = 0;
+		zone_queues[i] = numa_alloc_onnode(sizeof(queue), i);
+		init_queue(zone_queues[i]);
 		for (int j=0; j<ZONES; j++)
 			ts_vectors[i]->val[j] = 1;
-
-		for (int j=0; j < 50; j++) {
-			comm_channel[i][j].ready = 0; //make them all inactive inititally
-		}
 		//tx->timestamps[i] = create_shared_mem(i, sizeof(pad_word_t));
-
-		pthread_create(&server_th[i], &thread_attr, server_run, (void*)i);
 	}
 }
 
@@ -539,96 +513,167 @@ FORCE_INLINE void tm_abort(Tx_Context* tx, int explicitly)
 
 FORCE_INLINE void tm_commit(Tx_Context* tx)
 {
-	pad_msg_t* my_channel;
-	my_channel = &(comm_channel[tx->numa_zone][tx->index]);
+	if (tx->writeset->size() == 0) { //read-only
+		tx->commits++;
+		return;
+	}
 
-	my_channel->result = 0;
+	uintptr_t commit_ts = read_tsc() << LOCKBIT;
+	queue_item* q;
 
-	my_channel->ready = 1;
+	queue_item* my_entry = enqueue(zone_queues[tx->numa_zone], &tx->ws, commit_ts);
 
-	while(!my_channel->result) ;
+	for (int i=0; i < ZONES; i++) {
+		if (i != tx->numa_zone) {
+			bool again;
+			do {
+				again = false;
+				q = queue_top(zone_queues[i]);
+				if (q != NULL) {
+					uintptr_t diff = abs(commit_ts - q->commit_time);
+					if (diff < CLOCK_DIFF) {
+						q = queue_top(zone_queues[tx->numa_zone]);
+						if (q == my_entry) {
+							remove_top(zone_queues[tx->numa_zone]);
+							while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+								remove_top(zone_queues[tx->numa_zone]);
+							}
+						} else {
+							my_entry->ready = false;
+						}
 
-	if (my_channel->result == ABORT_RSLT) tm_abort(tx, 0);
-
-//	if (tx->writeset->size() == 0) { //read-only
-//		tx->commits++;
-//		return;
-//	}
-
-//	bool failed = false;
-//	for (int i = 0; i < tx->writes_pos; i++) {
-//		//TODO check timestamp also
-//		int srv_addr = tx->w_zone[i];
-//		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//		if (entry_p->lock_owner == (tx->id + 1)) continue;
-//		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
-//			failed = true;
-//			break;
-//		}
-//		tx->granted_writes[i] = true;
-//	}
-//	if (failed) { //unlock and abort
-//		for (int i = 0; i < tx->writes_pos; i++) {
-//			if (tx->granted_writes[i]) {
-//				int srv_addr = tx->w_zone[i];
-//				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
-//				//tx->granted_writes[i] = false;
-//			} else {
-//				break;
-//			}
-//		}
+						tm_abort(tx, 0);
+					}
+					if (commit_ts > q->commit_time) {
+						spin64();
+						again = true;
+					}
+				}
+//				else if (q != NULL && q->commit_time - commit_ts < CLOCK_DIFF) {
+////					int k = (CLOCK_DIFF - (q->commit_time - commit_ts)) / 10;
+////					while (k-- >= 0) {
+////						asm volatile ("pause");
+////					}
+//					q = queue_top(zone_queues[tx->numa_zone]);
+//					if (q == my_entry) {
+//						remove_top(zone_queues[tx->numa_zone]);
+//						while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+//							remove_top(zone_queues[tx->numa_zone]);
+//						}
+//					} else {
+//						my_entry->ready = false;
+//					}
 //
-//		tm_abort(tx, 0);
-//	}
+//					tm_abort(tx, 0);
+//				}
+			} while(again);
+		}
+	}
+
+	bool failed = false;
+	for (int i = 0; i < tx->writes_pos; i++) {
+		//TODO check timestamp also
+		int srv_addr = tx->numa_zone;// w_zone[i];
+		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+		if (entry_p->lock_owner == (tx->id + 1)) continue;
+		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
+			failed = true;
+			break;
+		}
+		tx->granted_writes[i] = true;
+	}
+	if (failed) { //unlock and abort
+		for (int i = 0; i < tx->writes_pos; i++) {
+			if (tx->granted_writes[i]) {
+				int srv_addr = tx->numa_zone;
+				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
+				//tx->granted_writes[i] = false;
+			} else {
+				break;
+			}
+		}
+		q = queue_top(zone_queues[tx->numa_zone]);
+		if (q == my_entry) {
+			remove_top(zone_queues[tx->numa_zone]);
+			while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+				remove_top(zone_queues[tx->numa_zone]);
+			}
+		} else {
+			my_entry->ready = false;
+		}
+
+		tm_abort(tx, 0);
+	}
 
 	//TODO check lock also
-// 	bool do_abort = false;
-//	//validate reads
-//	for (int i = 0; i < tx->reads_pos; i++) {
-//		int srv_addr = tx->r_zone[i];
-//		lock_entry* entry_p = &(lock_table[srv_addr][tx->reads[i]]);
-//		if (entry_p->version > tx->start_time[0]) {
-//			do_abort = true;
-//		}
-//	}
-//
-//	if (do_abort) {
-//		for (int i = 0; i < tx->writes_pos; i++) {
-//			if (tx->granted_writes[i]) {
-//				int srv_addr = tx->w_zone[i];
-//				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//				entry_p->lock_owner = 0;
-//			} else {
-//				break;
-//			}
-//		}
-//		tm_abort(tx, 0);
-//	}
+ 	bool do_abort = false;
+	//validate reads
+	for (int i = 0; i < tx->reads_pos; i++) {
+		int srv_addr = tx->numa_zone;
+		lock_entry* entry_p = &(lock_table[srv_addr][tx->reads[i]]);
+		if (entry_p->version > tx->start_time[0]) {
+			do_abort = true;
+		}
+	}
 
-//	tx->writeset->writeback();
-//
-//	uintptr_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->ready[0], 1);
-//
-//	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-//		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-//		while (i-- >= 0) {
-//			asm volatile ("pause");
-//		}
-//		next_ts = read_tsc() << LOCKBIT;
-//	}
-//
-//	//update versions & unlock
-//	for (int i = 0; i < tx->writes_pos; i++) {
-//		int srv_addr = tx->w_zone[i];
-//		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
-//		entry_p->version = next_ts;
-//		entry_p->lock_owner = 0;
-//	}
-//
-//
-//	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
-//	tx->commits++;
+	if (do_abort) {
+		for (int i = 0; i < tx->writes_pos; i++) {
+			if (tx->granted_writes[i]) {
+				int srv_addr = tx->numa_zone;
+				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+				entry_p->lock_owner = 0;
+			} else {
+				break;
+			}
+		}
+		q = queue_top(zone_queues[tx->numa_zone]);
+		if (q == my_entry) {
+			remove_top(zone_queues[tx->numa_zone]);
+			while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+				remove_top(zone_queues[tx->numa_zone]);
+			}
+		} else {
+			my_entry->ready = false;
+		}
+		tm_abort(tx, 0);
+	}
+
+	tx->writeset->writeback();
+
+	uintptr_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
+
+	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
+		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
+		while (i-- >= 0) {
+			asm volatile ("pause");
+		}
+		next_ts = read_tsc() << LOCKBIT;
+	}
+
+	//update versions & unlock
+	for (int i = 0; i < tx->writes_pos; i++) {
+		for (int j=0; j<ZONES; j++) {
+			lock_entry* entry_p = &(lock_table[j][tx->writes[i]]);
+			entry_p->version = next_ts;
+			if (j == tx->numa_zone) {
+				entry_p->lock_owner = 0;
+			}
+		}
+	}
+
+	q = queue_top(zone_queues[tx->numa_zone]);
+	if (q == my_entry) {
+		remove_top(zone_queues[tx->numa_zone]);
+		while((q = queue_top(zone_queues[tx->numa_zone])) != NULL && !q->ready) {
+			remove_top(zone_queues[tx->numa_zone]);
+		}
+	} else {
+		my_entry->ready = false;
+	}
+
+	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
+	tx->commits++;
 
 }
 
@@ -647,6 +692,8 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 			tx->granted_writes_pos =0;							\
 			tx->writeset->reset();								\
 			tx->count++;		\
+			tx->ws.clear(); \
+			tx->rs.clear(); \
 			tx->start_time[0] = read_tsc() << LOCKBIT;
 
 /*tx->count++;		\
