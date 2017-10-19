@@ -22,6 +22,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 
+struct tm_obj22 {
+	uint64_t owner;
+	uint64_t ver; //2 bit for state are used
+	uint64_t lock; //TODO make the lock part of the version
+	uintptr_t val;
+};
+
 namespace
 {
   /**
@@ -92,20 +99,21 @@ namespace stm
        * complicated.
        */
       void writeback() const {
-    	  switch(size) {
-			  case 1:
-				*((uint8_t*)addr) = val.i8;
-			  break;
-			  case 2:
-				*((uint16_t*)addr) = val.i16;
-			  break;
-			  case 4:
-				*((uint32_t*)addr) = val.i32;
-			  break;
-			  case 8:
-				*((uint64_t*)addr) = val.i64;
-			  break;
-		  }
+    	  ((tm_obj22*)addr)->val = val.i64;
+//    	  switch(size) {
+//			  case 1:
+//				*((uint8_t*)addr) = val.i8;
+//			  break;
+//			  case 2:
+//				*((uint16_t*)addr) = val.i16;
+//			  break;
+//			  case 4:
+//				*((uint32_t*)addr) = val.i32;
+//			  break;
+//			  case 8:
+//				*((uint64_t*)addr) = val.i64;
+//			  break;
+//		  }
       }
 
       bool validate() const {

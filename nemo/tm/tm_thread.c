@@ -33,7 +33,6 @@ ts_vector* ts_vectors[ZONES];
 pad_word_t* ts_loc[ZONES];
 lock_entry* lock_table[ZONES];
 pad_msg_t* comm_channel[ZONES];
-queue* zone_queues[ZONES];
 
 Numa_Lock numa_lock;
 
@@ -43,43 +42,6 @@ int logTM[LOG_SIZE];
 int logiTM = 0;
 
 #endif
-
-//TODO get zone thread count also
-void* server_run(void * args)
-{
-    int numa_zone = (long) args;
-
-
-    bitmask* mask = numa_allocate_cpumask();
-
-    //get # of cpu per node
-    numa_node_to_cpus(0, mask);
-    int cpu_per_node = 0;
-    while(numa_bitmask_isbitset(mask, cpu_per_node)) {
-    	cpu_per_node++;
-    }
-
-    //printf("cpus per node = %d\n", cpu_per_node);
-
-    numa_bitmask_clearall(mask);
-    numa_bitmask_setbit(mask, numa_zone * cpu_per_node);
-    if (numa_sched_setaffinity(0, mask)) {
-    	perror("numa_sched_setaffinity");
-		exit(-1);
-    }
-    numa_free_cpumask(mask);
-    int curcpu = sched_getcpu();
-    	    printf("Server on %d cpu set to %d\n", numa_zone, curcpu);
-
-    while (true) {
-    	for (int i=0; i<50; i++) {
-    		if (comm_channel[numa_zone][i].ready) {
-    			comm_channel[numa_zone][i].ready = 0;
-    			comm_channel[numa_zone][i].result = tm_srv_commit(comm_channel[numa_zone][i].tx);
-    		}
-    	}
-    }
-}
 
 //int SUPER_GL_LIMIT = 1;
 //int SUPER_GL_LIMIT2 = 1;

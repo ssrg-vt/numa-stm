@@ -14,7 +14,7 @@
 
 #include <errno.h>
 
-long* accountsAll[ZONES];
+tm_obj* accountsAll[ZONES];
 #define ACCOUT_NUM 1048576
 
 int total_threads;
@@ -56,9 +56,9 @@ void* th_run(void * args)
     int index = (long) args >> 20;
     printf("my id %d and zone %d (index %d)\n", id, numa_zone, index);
     	
-    	long* accounts = accountsAll[0];
+    	tm_obj* accounts = accountsAll[0];
 
-    	long* accounts2 = accountsAll[(numa_zone + 1) % ZONES];
+    	tm_obj* accounts2 = accountsAll[(numa_zone + 1) % ZONES];
 
 	    //assume symmetric numa zones
 	    //printf("numa zones count = %d\n", numa_num_configured_nodes());
@@ -219,13 +219,16 @@ int main(int argc, char* argv[])
 	total_threads = th_per_zone? th_per_zone : 1;
 
 	for (int j=0; j < ZONES; j++) {
-		accountsAll[j] = (long*) numa_alloc_onnode(sizeof(long) * ACCOUT_NUM, j);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
+		accountsAll[j] = (tm_obj*) numa_alloc_onnode(sizeof(tm_obj) * ACCOUT_NUM, j);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
 	}
 
 	unsigned long long initSum = 0;
 	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
-			accountsAll[j][i] = 1000;
+			accountsAll[j][i].val = 1000;
+			accountsAll[j][i].lock = 0;
+			accountsAll[j][i].owner = 0;
+			accountsAll[j][i].ver = 0;
 			initSum += 1000;
 		}
 	printf("init sum = %llu\n", initSum);
@@ -288,7 +291,7 @@ int main(int argc, char* argv[])
 	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			//printf("%d %d %d | ", accounts[i].id, accounts[i].ver, accounts[i].val);
-			sum += accountsAll[j][i];
+			sum += accountsAll[j][i].val;
 		}
 	printf("\nsum = %llu, matched = %d\n", sum, sum == initSum);
 
