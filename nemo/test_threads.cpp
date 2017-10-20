@@ -288,12 +288,16 @@ int main(int argc, char* argv[])
 	printf("\nThroughput = %llu\n", totalThroughput);
 
 	unsigned long long sum = 0;
+	int c=0;
 	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			//printf("%d %d %d | ", accounts[i].id, accounts[i].ver, accounts[i].val);
 			sum += accountsAll[j][i].val;
+			if (j==0 && accountsAll[j][i].val == 1000) {
+				c++;
+			}
 		}
-	printf("\nsum = %llu, matched = %d\n", sum, sum == initSum);
+	printf("\nsum = %llu, matched = %d, not changed %d\n", sum, sum == initSum, c);
 
 	return 0;
 }
