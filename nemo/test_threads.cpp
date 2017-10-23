@@ -96,6 +96,9 @@ void* th_run(void * args)
 
 		  barrier(0);
 
+		  thread_init(id, numa_zone, index);
+
+		  barrier(1);
 	unsigned int seed = id;
 
 	if (id == 0) {
@@ -227,7 +230,7 @@ int main(int argc, char* argv[])
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			accountsAll[j][i].val = 1000;
 			accountsAll[j][i].lock = 0;
-			accountsAll[j][i].owner = 0;
+			//accountsAll[j][i].owner = 0;
 			accountsAll[j][i].ver = 0;
 			initSum += 1000;
 		}

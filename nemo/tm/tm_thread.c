@@ -36,6 +36,8 @@ pad_msg_t* comm_channel[ZONES];
 
 Numa_Lock numa_lock;
 
+pad_word_t* thread_locks[500];
+
 #ifdef DEBUG
 
 int logTM[LOG_SIZE];
