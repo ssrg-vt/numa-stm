@@ -103,7 +103,7 @@ inline uint64_t tick()
 struct tm_obj {
 	//uint64_t owner;
 	uint64_t ver; //2 bit for state are used
-	uint64_t lock; //TODO make the lock part of the version
+	uint64_t lock; //TODO make the lock part of the version //TODO make it volatile
 	uintptr_t val;
 };
 
@@ -454,9 +454,12 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	}
 
 	//acquire my lock
-	while (!__sync_bool_compare_and_swap(&(tx->thread_locks[tx->id]->val), 0, tx->id+1)) {
-		asm volatile ("pause");
-	}
+//	while (!__sync_bool_compare_and_swap(&(tx->thread_locks[tx->id]->val), 0, tx->id+1)) {
+//		asm volatile ("pause");
+//	}
+
+	//rais my flag
+	tx->thread_locks[tx->id]->val = 1;
 
 //	int locks_gained = 0;
 //	int locks_gained[500];
@@ -465,17 +468,17 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 		if (obj->lock == (tx->id + 1)) continue;
-		if (obj->lock) {
-			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, tx->id+1)) {
+		if (obj->lock && tx->thread_locks[obj->lock-1]->val) {
+//			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, tx->id+1)) {
 				failed = true;
 				break;
-			} else {
-				//take ownership and unlock
-				int th = obj->lock;
-				obj->lock = tx->id+1;
-				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
-			}
-		} else if (!__sync_bool_compare_and_swap(&(obj->lock), 0, tx->id+1)) {
+//			} else {
+//				//take ownership and unlock
+//				int th = obj->lock;
+//				obj->lock = tx->id+1;
+//				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
+//			}
+		} else if (!__sync_bool_compare_and_swap(&(obj->lock), obj->lock, tx->id+1)) {
 			failed = true;
 			break;
 		}
