@@ -232,6 +232,8 @@ int main(int argc, char* argv[])
 			accountsAll[j][i].lock = 0;
 			//accountsAll[j][i].owner = 0;
 			accountsAll[j][i].ver = 0;
+			accountsAll[j][i].flag = 0;
+			accountsAll[j][i].flag2 = 0;
 			initSum += 1000;
 		}
 	printf("init sum = %llu\n", initSum);
@@ -296,7 +298,7 @@ int main(int argc, char* argv[])
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			//printf("%d %d %d | ", accounts[i].id, accounts[i].ver, accounts[i].val);
 			sum += accountsAll[j][i].val;
-			if (j==0 && accountsAll[j][i].val == 1000) {
+			if (j==0 && accountsAll[j][i].val != 1000) {
 				c++;
 			}
 		}

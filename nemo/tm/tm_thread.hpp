@@ -100,12 +100,14 @@ inline uint64_t tick()
 
 #define PROCESS_NUM 8
 
-struct tm_obj {
-	//uint64_t owner;
-	uint64_t ver; //2 bit for state are used
-	uint64_t lock; //TODO make the lock part of the version //TODO make it volatile
-	uintptr_t val;
-};
+//struct tm_obj {
+//	//uint64_t owner;
+//	uint64_t ver; //2 bit for state are used
+//	uint64_t lock; //TODO make the lock part of the version //TODO make it volatile
+//	volatile uint64_t flag; //TODO is volatile a must?
+//	volatile uint64_t flag2; //TODO is volatile a must?
+//	uintptr_t val;
+//};
 
 #define MAX_BATCH 8
 #define BATCH_LIMIT 8
@@ -412,7 +414,7 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 //		}
 	}
 	else {
-		printf("init local th lock pointers\n");
+//		printf("init local th lock pointers\n");
 		Tx_Context* tx = (Tx_Context*)Self;
 		for (int i=0; i<500; i++) {
 			tx->thread_locks[i] = thread_locks[i];
@@ -459,7 +461,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //	}
 
 	//rais my flag
-	tx->thread_locks[tx->id]->val = 1;
+	//tx->thread_locks[tx->id]->val = 1;
 
 //	int locks_gained = 0;
 //	int locks_gained[500];
@@ -467,8 +469,16 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	bool failed = false;
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
-		if (obj->lock == (tx->id + 1)) continue;
-		if (obj->lock && tx->thread_locks[obj->lock-1]->val) {
+		if (obj->lock == (tx->id + 1)) {
+			obj->flag = 1;
+			CFENCE;
+			if (obj->flag2 || obj->lock != (tx->id + 1)) {
+				obj->flag = 0;
+				failed = true;
+				break;
+			}
+			//continue;
+		}else if (obj->lock && (obj->flag || obj->flag2)) {
 //			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, tx->id+1)) {
 				failed = true;
 				break;
@@ -478,7 +488,15 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //				obj->lock = tx->id+1;
 //				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
 //			}
-		} else if (!__sync_bool_compare_and_swap(&(obj->lock), obj->lock, tx->id+1)) {
+		} else if (__sync_bool_compare_and_swap(&(obj->flag2), 0, tx->id+1)) {
+			if (obj->flag) {
+				obj->flag2 = 0;
+				failed = true;
+				break;
+			} else {
+				obj->lock = (tx->id + 1);
+			}
+		} else {
 			failed = true;
 			break;
 		}
@@ -486,16 +504,15 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	}
 	if (failed) { //unlock and abort
 		//TODO May be we can keep the ownership
-//		for (int i = 0; i < tx->writes_pos; i++) {
-//			if (tx->granted_writes[i]) {
-//				tm_obj* obj = (tm_obj*) tx->writes[i];
-//				//obj->lock = 0;
-//				tx->thread_locks[obj->lock-1]->val = 0;
-//			} else {
-//				break;
-//			}
-//		}
-		tx->thread_locks[tx->id]->val = 0;
+		for (int i = 0; i < tx->writes_pos; i++) {
+			if (tx->granted_writes[i]) {
+				tm_obj* obj = (tm_obj*) tx->writes[i];
+				obj->flag = 0;
+				obj->flag2 = 0;
+			} else {
+				break;
+			}
+		}
 		tm_abort(tx, 0);
 	}
 
@@ -512,16 +529,15 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	if (do_abort) {
 		//TODO May be we can keep the ownership
-//		for (int i = 0; i < tx->writes_pos; i++) {
-//			if (tx->granted_writes[i]) {
-//				tm_obj* obj = (tm_obj*) tx->writes[i];
-//				tx->thread_locks[obj->lock-1]->val = 0;
-////				obj->lock = 0;
-//			} else {
-//				break;
-//			}
-//		}
-		tx->thread_locks[tx->id]->val = 0;
+		for (int i = 0; i < tx->writes_pos; i++) {
+			if (tx->granted_writes[i]) {
+				tm_obj* obj = (tm_obj*) tx->writes[i];
+				obj->flag = 0;
+				obj->flag2 = 0;
+			} else {
+				break;
+			}
+		}
 		tm_abort(tx, 0);
 	}
 
@@ -541,13 +557,14 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 		obj->ver = next_ts;
-		//obj->owner = tx->id;
+		obj->flag = 0;
+		obj->flag2 = 0;
 //		uint64_t old = obj->lock;
 //		obj->lock = tx->id + 1;
 //		tx->thread_locks[old-1]->val = 0;
 	}
 
-	tx->thread_locks[tx->id]->val = 0;
+//	tx->thread_locks[tx->id]->val = 0;
 
 	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
 	tx->commits++;

@@ -20,12 +20,15 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <stdint.h>
 
-struct tm_obj22 {
-	uint64_t owner;
+struct tm_obj {
+	//uint64_t owner;
 	uint64_t ver; //2 bit for state are used
-	uint64_t lock; //TODO make the lock part of the version
+	uint64_t lock; //TODO make the lock part of the version //TODO make it volatile
+	volatile uint64_t flag; //TODO is volatile a must?
+	volatile uint64_t flag2; //TODO is volatile a must?
 	uintptr_t val;
 };
 
@@ -99,7 +102,7 @@ namespace stm
        * complicated.
        */
       void writeback() const {
-    	  ((tm_obj22*)addr)->val = val.i64;
+    	  ((tm_obj*)addr)->val = val.i64;
 //    	  switch(size) {
 //			  case 1:
 //				*((uint8_t*)addr) = val.i8;
