@@ -66,13 +66,6 @@ extern lock_entry* lock_table[ZONES];
 
 #define NUM_STRIPES  1048576
 
-FORCE_INLINE
-uint64_t read_tsc(void)
-{
-	uint32_t a, d;
-	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
-	return ((uint64_t) a) | (((uint64_t) d) << 32);
-}
 
 
 inline unsigned long long get_real_time() {
@@ -172,6 +165,17 @@ extern pad_msg_t* comm_channel[ZONES];
 
 extern pad_word_t* thread_locks[500];
 
+
+FORCE_INLINE
+uint64_t read_tsc(void)
+{
+//	uint32_t a, d;
+//	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
+//	return ((uint64_t) a) | (((uint64_t) d) << 32);
+	return __sync_fetch_and_add(&(thread_locks[0]->val), 1);
+}
+
+
 #define TM_TX_VAR	Tx_Context* tx = (Tx_Context*)Self;
 
 #define TM_ARG , Tx_Context* tx
@@ -253,7 +257,7 @@ FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
 	uintptr_t val = obj->val;
 	CFENCE;
 	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->flag) || (obj->flag2)) {
+	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->lock) /*|| (obj->flag2)*/) {
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
@@ -471,33 +475,34 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 		if (obj->lock == (tx->id + 1)) {
-			obj->flag = 1;
-			CFENCE;
-			if (obj->flag2 || obj->lock != (tx->id + 1)) {
-				obj->flag = 0;
-				failed = true;
-				break;
-			}
-			//continue;
-		}else if (obj->lock && (obj->flag || obj->flag2)) {
-//			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, tx->id+1)) {
-				failed = true;
-				break;
-//			} else {
-//				//take ownership and unlock
-//				int th = obj->lock;
-//				obj->lock = tx->id+1;
-//				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
+//			obj->flag = 1;
+//			CFENCE;
+//			if (obj->flag2 || obj->lock != (tx->id + 1)) {
+//				obj->flag = 0;
+//				failed = true;
+//				break;
 //			}
-		} else if (__sync_bool_compare_and_swap(&(obj->flag2), 0, tx->id+1)) {
-			if (obj->flag) {
-				obj->flag2 = 0;
-				failed = true;
-				break;
-			} else {
-				obj->lock = (tx->id + 1);
-			}
-		} else {
+			continue;
+//		}
+//		else if (obj->lock && (obj->flag || obj->flag2)) {
+////			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, tx->id+1)) {
+//				failed = true;
+//				break;
+////			} else {
+////				//take ownership and unlock
+////				int th = obj->lock;
+////				obj->lock = tx->id+1;
+////				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
+////			}
+		} else if (!__sync_bool_compare_and_swap(&(obj->lock), 0, tx->id+1)) {
+//			if (obj->flag) {
+//				obj->flag2 = 0;
+//				failed = true;
+//				break;
+//			} else {
+//				obj->lock = (tx->id + 1);
+//			}
+//		} else {
 			failed = true;
 			break;
 		}
@@ -508,8 +513,9 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		for (int i = 0; i < tx->writes_pos; i++) {
 			if (tx->granted_writes[i]) {
 				tm_obj* obj = (tm_obj*) tx->writes[i];
-				obj->flag = 0;
-				obj->flag2 = 0;
+				obj->lock = 0;
+//				obj->flag = 0;
+//				obj->flag2 = 0;
 			} else {
 				break;
 			}
@@ -533,8 +539,9 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		for (int i = 0; i < tx->writes_pos; i++) {
 			if (tx->granted_writes[i]) {
 				tm_obj* obj = (tm_obj*) tx->writes[i];
-				obj->flag = 0;
-				obj->flag2 = 0;
+				obj->lock = 0;
+//				obj->flag = 0;
+//				obj->flag2 = 0;
 			} else {
 				break;
 			}
@@ -546,20 +553,21 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	uintptr_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
-	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-		while (i-- >= 0) {
-			asm volatile ("pause");
-		}
-		next_ts = read_tsc() << LOCKBIT;
-	}
+//	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
+//		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
+//		while (i-- >= 0) {
+//			asm volatile ("pause");
+//		}
+//		next_ts = read_tsc() << LOCKBIT;
+//	}
 
 	//update versions & unlock
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 		obj->ver = next_ts;
-		obj->flag = 0;
-		obj->flag2 = 0;
+		obj->lock = 0;
+//		obj->flag = 0;
+//		obj->flag2 = 0;
 //		uint64_t old = obj->lock;
 //		obj->lock = tx->id + 1;
 //		tx->thread_locks[old-1]->val = 0;
