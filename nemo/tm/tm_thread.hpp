@@ -249,10 +249,11 @@ FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
     tm_obj * obj = (tm_obj *) addr;
 
 	uint64_t v1 = obj->ver;
+	CFENCE;
 	uintptr_t val = obj->val;
-	//TODO Barrier needed
+	CFENCE;
 	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) /*|| (obj->lock)*/) {
+	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->flag) || (obj->flag2)) {
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
