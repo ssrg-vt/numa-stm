@@ -137,7 +137,7 @@ struct Tx_Context {
 	int granted_writes_pos;
 	uint64_t writes[ACCESS_SIZE];
 	uint8_t w_zone[ACCESS_SIZE];
-	bool granted_writes[ACCESS_SIZE];
+	int granted_writes[ACCESS_SIZE];
 	WriteSet* writeset;
 	bool touched_zones[8];
 	long commits =0, aborts =0, count=0, internuma =0, mineNotChanged=0;
@@ -172,7 +172,7 @@ uint64_t read_tsc(void)
 //	uint32_t a, d;
 //	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
 //	return ((uint64_t) a) | (((uint64_t) d) << 32);
-	return __sync_fetch_and_add(&(thread_locks[0]->val), 1);
+	return __sync_fetch_and_add(&(thread_locks[400]->val), 1);
 }
 
 
@@ -257,7 +257,7 @@ FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
 	uintptr_t val = obj->val;
 	CFENCE;
 	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->lock) /*|| (obj->flag2)*/) {
+	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->owner_in) || (obj->request)) {
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
@@ -274,7 +274,7 @@ FORCE_INLINE void tm_write(tm_obj* addr, uintptr_t val, Tx_Context* tx, int numa
 		tx->writes[w_pos] = addr;//reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
 //		tx->w_zone[w_pos] = numa_zone;
 //    	tx->touched_zones[numa_zone] = true;
-		tx->granted_writes[w_pos] = false;
+		tx->granted_writes[w_pos] = 0;
     }
 }
 
@@ -398,13 +398,17 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 //		}
 		for (int j=0; j<ACCESS_SIZE; j++) {
 			tx->granted_reads[j] = false;
-			tx->granted_writes[j] = false;
+			tx->granted_writes[j] = 0;
 		}
 		for (int i=0; i<ZONES;i++) {
 			tx->start_time[i] = 0;
 		}
 		thread_locks[id] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
 		thread_locks[id]->val = 0;
+		if (id == 0) {
+			thread_locks[400] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
+			thread_locks[400]->val = 0;
+		}
 //		for (int i=0; i < SRV_COUNT; i++)
 //			lock_table[i] = get_lock_table(i);
 
@@ -460,66 +464,94 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		return;
 	}
 
+	bool ownership_taken = false;
 	//acquire my lock
-//	while (!__sync_bool_compare_and_swap(&(tx->thread_locks[tx->id]->val), 0, tx->id+1)) {
+//	while (!__sync_bool_compare_and_swap(&(tx->thread_locks[tx->id]->val), 0, idP1)) {
 //		asm volatile ("pause");
 //	}
-
+	tx->thread_locks[tx->id]->val = 1;
 	//rais my flag
 	//tx->thread_locks[tx->id]->val = 1;
 
 //	int locks_gained = 0;
 //	int locks_gained[500];
+	int idP1 = tx->id + 1;
 
 	bool failed = false;
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
-		if (obj->lock == (tx->id + 1)) {
-//			obj->flag = 1;
-//			CFENCE;
-//			if (obj->flag2 || obj->lock != (tx->id + 1)) {
-//				obj->flag = 0;
+//		uint64_t ver = obj->ver;
+		if (obj->owner == idP1 && !obj->request) {
+			obj->owner_in = idP1;
+			CFENCE;
+			if (obj->owner == idP1) {
+//				if (obj->ver == ver)
+//					obj->flag = 0;
+//				__sync_bool_compare_and_swap(&(obj->flag), idP1, 0);
 //				failed = true;
 //				break;
+//			} else {
+				tx->granted_writes[i] = 1;
+			} else {
+				obj->owner_in = -idP1;
+				failed = true;
+				break;
+			}
+//			continue;
+		}
+		else if (obj->owner_in || obj->request) {
+//			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, idP1)) {
+				failed = true;
+				break;
+//			} else {
+//				//take ownership and unlock
+//				int th = obj->lock;
+//				obj->lock = idP1;
+//				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
 //			}
-			continue;
-//		}
-//		else if (obj->lock && (obj->flag || obj->flag2)) {
-////			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, tx->id+1)) {
-//				failed = true;
-//				break;
-////			} else {
-////				//take ownership and unlock
-////				int th = obj->lock;
-////				obj->lock = tx->id+1;
-////				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
-////			}
-		} else if (!__sync_bool_compare_and_swap(&(obj->lock), 0, tx->id+1)) {
-//			if (obj->flag) {
+		} else if (__sync_bool_compare_and_swap(&(obj->request), 0, idP1)) {
+			uint64_t old_owner = obj->owner;
+			obj->owner = idP1;
+			CFENCE;
+			while (obj->owner_in && obj->owner_in == old_owner){
+				asm volatile ("pause");
+			}
+			if (obj->owner_in) { //special case when a very old owner interfere
+				tx->thread_locks[tx->id]->val = 0;
+				while (tx->thread_locks[old_owner]->val){
+					asm volatile ("pause");
+				}
+				obj->owner_in = 0;
+				obj->request = 0;
+				failed = true;
+				break;
+			} else {
+				tx->granted_writes[i] = 2;
+			}
 //				obj->flag2 = 0;
 //				failed = true;
 //				break;
 //			} else {
 //				obj->lock = (tx->id + 1);
 //			}
-//		} else {
+		} else {
 			failed = true;
 			break;
 		}
-		tx->granted_writes[i] = true;
+//		tx->granted_writes[i] = true;
 	}
 	if (failed) { //unlock and abort
-		//TODO May be we can keep the ownership
 		for (int i = 0; i < tx->writes_pos; i++) {
-			if (tx->granted_writes[i]) {
-				tm_obj* obj = (tm_obj*) tx->writes[i];
-				obj->lock = 0;
-//				obj->flag = 0;
-//				obj->flag2 = 0;
+			tm_obj* obj = (tm_obj*) tx->writes[i];
+			if (tx->granted_writes[i] == 1) {
+				obj->owner_in = 0;
+			} else if (tx->granted_writes[i] == 2) {
+				obj->request = 0;
 			} else {
 				break;
 			}
 		}
+		tx->thread_locks[tx->id]->val = 0;
 		tm_abort(tx, 0);
 	}
 
@@ -537,15 +569,16 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	if (do_abort) {
 		//TODO May be we can keep the ownership
 		for (int i = 0; i < tx->writes_pos; i++) {
-			if (tx->granted_writes[i]) {
-				tm_obj* obj = (tm_obj*) tx->writes[i];
-				obj->lock = 0;
-//				obj->flag = 0;
-//				obj->flag2 = 0;
+			tm_obj* obj = (tm_obj*) tx->writes[i];
+			if (tx->granted_writes[i] == 1) {
+				obj->owner_in = 0;
+			} else if (tx->granted_writes[i] == 2) {
+				obj->request = 0;
 			} else {
 				break;
 			}
 		}
+		tx->thread_locks[tx->id]->val = 0;
 		tm_abort(tx, 0);
 	}
 
@@ -565,7 +598,13 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 		obj->ver = next_ts;
-		obj->lock = 0;
+		if (tx->granted_writes[i] == 1) {
+			obj->owner_in = 0;
+		} else if (tx->granted_writes[i] == 2) {
+			obj->request = 0;
+		}
+
+//		obj->lock = 0;
 //		obj->flag = 0;
 //		obj->flag2 = 0;
 //		uint64_t old = obj->lock;
@@ -573,7 +612,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //		tx->thread_locks[old-1]->val = 0;
 	}
 
-//	tx->thread_locks[tx->id]->val = 0;
+	tx->thread_locks[tx->id]->val = 0;
 
 	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
 	tx->commits++;

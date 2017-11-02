@@ -229,11 +229,10 @@ int main(int argc, char* argv[])
 	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			accountsAll[j][i].val = 1000;
-			accountsAll[j][i].lock = 0;
-			//accountsAll[j][i].owner = 0;
+			accountsAll[j][i].owner = 0;
 			accountsAll[j][i].ver = 0;
-			accountsAll[j][i].flag = 0;
-			accountsAll[j][i].flag2 = 0;
+			accountsAll[j][i].owner_in = 0;
+			accountsAll[j][i].request = 0;
 			initSum += 1000;
 		}
 	printf("init sum = %llu\n", initSum);
@@ -302,7 +301,7 @@ int main(int argc, char* argv[])
 				c++;
 			}
 		}
-	printf("\nsum = %llu, matched = %d, not changed %d\n", sum, sum == initSum, c);
+	printf("\nsum = %llu, matched = %d, not changed %llu\n", sum, sum == initSum, c);
 
 	return 0;
 }

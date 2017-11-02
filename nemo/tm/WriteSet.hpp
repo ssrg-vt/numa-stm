@@ -24,11 +24,10 @@
 #include <stdint.h>
 
 struct tm_obj {
-	//uint64_t owner;
-	volatile uint64_t ver; //2 bit for state are used
-	volatile uint64_t lock; //TODO make the lock part of the version //TODO make it volatile
-	volatile uint64_t flag; //TODO is volatile a must?
-	volatile uint64_t flag2; //TODO is volatile a must?
+	volatile uint64_t ver;
+	volatile uint64_t owner;
+	volatile uint64_t owner_in;
+	volatile uint64_t request;
 	uintptr_t val;
 };
 
