@@ -257,7 +257,7 @@ FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
 	uintptr_t val = obj->val;
 	CFENCE;
 	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->owner_in) || (obj->request)) {
+	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->owner_in > 0) || (obj->request)) { //TODO must handle -ve owner_in issue or ignore opacity!
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
@@ -585,14 +585,14 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	tx->writeset->writeback();
 
-	uintptr_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
+	uintptr_t next_ts = read_tsc();// << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
 //	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
 //		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
 //		while (i-- >= 0) {
 //			asm volatile ("pause");
 //		}
-//		next_ts = read_tsc() << LOCKBIT;
+//		next_ts = read_tsc();// << LOCKBIT;
 //	}
 
 	//update versions & unlock
@@ -635,7 +635,10 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 			tx->granted_writes_pos =0;							\
 			tx->writeset->reset();								\
 			tx->count++;		\
-			tx->start_time[0] = read_tsc() << LOCKBIT;
+			tx->start_time[0] = read_tsc();
+
+
+//<< LOCKBIT;
 
 /*tx->count++;		\
 			if (tx->count % 10 == 0) { \
