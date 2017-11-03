@@ -464,7 +464,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		return;
 	}
 
-	bool ownership_taken = false;
+//	bool ownership_taken = false;
 	//acquire my lock
 //	while (!__sync_bool_compare_and_swap(&(tx->thread_locks[tx->id]->val), 0, idP1)) {
 //		asm volatile ("pause");
@@ -475,6 +475,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 //	int locks_gained = 0;
 //	int locks_gained[500];
+	//TODO make threads id start from 1
 	int idP1 = tx->id + 1;
 
 	bool failed = false;
@@ -518,7 +519,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 			}
 			if (obj->owner_in) { //special case when a very old owner interfere
 				tx->thread_locks[tx->id]->val = 0;
-				while (tx->thread_locks[old_owner]->val){
+				while (tx->thread_locks[old_owner-1]->val){
 					asm volatile ("pause");
 				}
 				obj->owner_in = 0;

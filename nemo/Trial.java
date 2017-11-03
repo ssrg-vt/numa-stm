@@ -3,8 +3,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Trial extends Thread {
 	static AtomicInteger owner = new AtomicInteger(1), owner_in = new AtomicInteger(0), request = new AtomicInteger(0);
 	static volatile int counter = 0;
-	static volatile boolean[] in = new boolean[4];
-	static volatile int[] flags = new int[4];
+	static volatile boolean[] in = new boolean[40];
+	static volatile int[] flags = new int[40];
 	int id;
 	public Trial(int id) {
 		this.id = id;
@@ -76,14 +76,19 @@ public class Trial extends Thread {
 
 	
 	public static void main(String[] args) {
-		Trial th1 = new Trial(1);
-		Trial th2 = new Trial(2);
-		th1.start();
-		th2.start();
+		int threadsCount = 4;
+		
+		Trial[] th = new Trial[40];
+		
+		for (int i=0; i < threadsCount; i++) {
+			th[i] = new Trial(i+1);
+			th[i].start();
+		}
 		
 		try {
-			th1.join();
-			th2.join();
+			for (int i=0; i < threadsCount; i++) {
+				th[i].join();
+			}
 		} catch (InterruptedException e) {
 			e.printStackTrace();
 		}
