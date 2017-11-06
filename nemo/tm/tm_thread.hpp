@@ -32,7 +32,8 @@ extern int logiTM;
 
 #endif
 
-#define CLOCK_DIFF 378
+#define CLOCK_DIFF 1000
+//was 378
 #define LOCKBIT  1
 
 #define ZONES 4
@@ -41,6 +42,7 @@ extern int logiTM;
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define CACHELINE_BYTES 64
 #define CFENCE              __asm__ volatile ("":::"memory")
+#define MFENCE  __asm__ volatile ("mfence":::"memory")
 
 
 using stm::WriteSetEntry;
@@ -482,9 +484,9 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 //		uint64_t ver = obj->ver;
-		if (obj->owner == idP1 && !obj->request) {
+		if (obj->owner == idP1 && obj->request == 0) {
 			obj->owner_in = idP1;
-			CFENCE;
+			MFENCE;
 			if (obj->owner == idP1) {
 //				if (obj->ver == ver)
 //					obj->flag = 0;
@@ -501,23 +503,24 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //			continue;
 		}
 		else if (obj->owner_in || obj->request) {
-//			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, idP1)) {
+////			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, idP1)) {
 				failed = true;
 				break;
-//			} else {
-//				//take ownership and unlock
-//				int th = obj->lock;
-//				obj->lock = idP1;
-//				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
-//			}
-		} else if (__sync_bool_compare_and_swap(&(obj->request), 0, idP1)) {
-			uint64_t old_owner = obj->owner;
+////			} else {
+////				//take ownership and unlock
+////				int th = obj->lock;
+////				obj->lock = idP1;
+////				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
+////			}
+		} else
+			if (__sync_bool_compare_and_swap(&(obj->request), 0, idP1)) {
+			int old_owner = obj->owner;
 			obj->owner = idP1;
-			CFENCE;
-			while (obj->owner_in && obj->owner_in == old_owner){
+			MFENCE;
+			while (obj->owner_in != 0 && obj->owner_in == old_owner){
 				asm volatile ("pause");
 			}
-			if (obj->owner_in) { //special case when a very old owner interfere
+			if (obj->owner_in < 0) { //special case when a very old owner interfere
 				tx->thread_locks[tx->id]->val = 0;
 				while (tx->thread_locks[old_owner-1]->val){
 					asm volatile ("pause");

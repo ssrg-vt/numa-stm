@@ -31,11 +31,9 @@ barrier(uint32_t which)
     CFENCE;
 }
 
-int myid;
 void
 signal_callback_handler(int signum)
 {
-   printlogTM(myid);
    // Terminate program
    exit(signum);
 }
@@ -183,7 +181,7 @@ void* th_run(void * args)
 //	pthread_join(thread4, NULL);
 	time = get_real_time() - time;
 
-	printlogTM(myid);
+//	printlogTM(myid);
     //curcpu = sched_getcpu();
     //printf("cpu set to %d\n", curcpu);
 
