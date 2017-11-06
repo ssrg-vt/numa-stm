@@ -501,11 +501,11 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 				break;
 			}
 //			continue;
-		}
-		else if (obj->owner_in || obj->request) {
+//		}
+//		else if (obj->owner_in || obj->request) {
 ////			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, idP1)) {
-				failed = true;
-				break;
+//				failed = true;
+//				break;
 ////			} else {
 ////				//take ownership and unlock
 ////				int th = obj->lock;
