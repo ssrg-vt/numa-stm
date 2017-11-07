@@ -171,10 +171,10 @@ extern pad_word_t* thread_locks[500];
 FORCE_INLINE
 uint64_t read_tsc(void)
 {
-//	uint32_t a, d;
-//	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
-//	return ((uint64_t) a) | (((uint64_t) d) << 32);
-	return __sync_fetch_and_add(&(thread_locks[400]->val), 1);
+	uint32_t a, d;
+	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
+	return ((uint64_t) a) | (((uint64_t) d) << 32);
+//	return __sync_fetch_and_add(&(thread_locks[400]->val), 1);
 }
 
 
@@ -484,7 +484,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
 //		uint64_t ver = obj->ver;
-		if (obj->owner == idP1 && obj->request == 0) {
+/*		if (obj->owner == idP1 && obj->request == 0) {
 			obj->owner_in = idP1;
 			MFENCE;
 			if (obj->owner == idP1) {
@@ -512,9 +512,9 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 ////				obj->lock = idP1;
 ////				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
 ////			}
-		} else
+		} else*/
 			if (__sync_bool_compare_and_swap(&(obj->request), 0, idP1)) {
-			int old_owner = obj->owner;
+			/*int old_owner = obj->owner;
 			obj->owner = idP1;
 			MFENCE;
 			if (obj->owner_in != 0 && obj->owner_in == old_owner){
@@ -531,9 +531,9 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 				obj->request = 0;
 				failed = true;
 				break;
-			} else {
+			} else {*/
 				tx->granted_writes[i] = 2;
-			}
+			//}
 //				obj->flag2 = 0;
 //				failed = true;
 //				break;
@@ -593,13 +593,13 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	uintptr_t next_ts = read_tsc();// << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
 //	CFENCE;
-//	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-//		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-//		while (i-- >= 0) {
-//			asm volatile ("pause");
-//		}
-//		next_ts = read_tsc();// << LOCKBIT;
-//	}
+	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
+		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
+		while (i-- >= 0) {
+			asm volatile ("pause");
+		}
+		next_ts = read_tsc();// << LOCKBIT;
+	}
 
 	//update versions & unlock
 	for (int i = 0; i < tx->writes_pos; i++) {

@@ -35,10 +35,11 @@ public class Trial extends Thread {
 					int old_owner = owner.get();
 					owner.set(id);
 					
-					while (owner_in.get() != 0 && owner_in.get() == old_owner) {
-						yield();
-					}
-					if (owner_in.get() != 0) {
+					if (owner_in.get() != 0 && owner_in.get() == old_owner) {
+						owner.set(old_owner);
+						flags[id] = 0;
+						request.set(0);
+					} else if (owner_in.get() != 0) {
 						flags[id] = 0;
 						while (flags[old_owner] != 0){
 							yield();
