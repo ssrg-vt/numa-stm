@@ -42,7 +42,6 @@ extern int logiTM;
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define CACHELINE_BYTES 64
 #define CFENCE              __asm__ volatile ("":::"memory")
-//#define MFENCE  __asm__ volatile ("mfence":::"memory")
 
 
 using stm::WriteSetEntry;
@@ -68,6 +67,13 @@ extern lock_entry* lock_table[ZONES];
 
 #define NUM_STRIPES  1048576
 
+FORCE_INLINE
+uint64_t read_tsc(void)
+{
+	uint32_t a, d;
+	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
+	return ((uint64_t) a) | (((uint64_t) d) << 32);
+}
 
 
 inline unsigned long long get_real_time() {
@@ -139,13 +145,12 @@ struct Tx_Context {
 	int granted_writes_pos;
 	uint64_t writes[ACCESS_SIZE];
 	uint8_t w_zone[ACCESS_SIZE];
-	int granted_writes[ACCESS_SIZE];
+	bool granted_writes[ACCESS_SIZE];
 	WriteSet* writeset;
 	bool touched_zones[8];
 	long commits =0, aborts =0, count=0, internuma =0, mineNotChanged=0;
 	int backoff;
 	unsigned int seed;
-	pad_word_t* thread_locks[500];
 #ifdef STATISTICS
 #endif
 };
@@ -165,17 +170,6 @@ struct pad_msg_t
 
 extern pad_msg_t* comm_channel[ZONES];
 
-extern pad_word_t* thread_locks[500];
-
-
-FORCE_INLINE
-uint64_t read_tsc(void)
-{
-	uint32_t a, d;
-	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
-	return ((uint64_t) a) | (((uint64_t) d) << 32);
-//	return __sync_fetch_and_add(&(thread_locks[400]->val), 1);
-}
 
 
 #define TM_TX_VAR	Tx_Context* tx = (Tx_Context*)Self;
@@ -243,108 +237,110 @@ FORCE_INLINE void addToLogTM(int serverId, int objId, int isWrite, int isLock, i
 }
 
 
-//template <typename T>
-FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
+template <typename T>
+FORCE_INLINE T tm_read(T* addr, Tx_Context* tx, int numa_zone)
 {
     WriteSetEntry log((void**)addr);
     bool found = tx->writeset->find(log);
     if (__builtin_expect(found, false))
-		return (uintptr_t) log.val.i64;
+		return (T) log.val.i64;
 
 
-    tm_obj * obj = (tm_obj *) addr;
+	uint64_t index = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
+	lock_entry* entry_p = &(lock_table[numa_zone][index]);
 
-	uint64_t v1 = obj->ver;
+	uint64_t v1 = entry_p->version;
 	CFENCE;
-	uintptr_t val = obj->val;
+	T val = *addr;
 	CFENCE;
-	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) || (obj->owner_in > 0) || (obj->request)) { //TODO must handle -ve owner_in issue or ignore opacity!
+	uint64_t v2 = entry_p->version;
+	if (v1 > tx->start_time[0] || (v1 != v2) || entry_p->lock_owner) {
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
-	tx->reads[r_pos] = addr;
+	tx->reads[r_pos] = index;
+	tx->r_zone[r_pos] = numa_zone;
 	return val;
 }
 
-//template <typename T>
-FORCE_INLINE void tm_write(tm_obj* addr, uintptr_t val, Tx_Context* tx, int numa_zone)
+template <typename T>
+FORCE_INLINE void tm_write(T* addr, T val, char size, Tx_Context* tx, int numa_zone)
 {
-    bool alreadyExists = tx->writeset->insert(WriteSetEntry((void**)addr, (uint64_t)val, 8));
+    bool alreadyExists = tx->writeset->insert(WriteSetEntry((void**)addr, (uint64_t)val, size));
     if (!alreadyExists) {//TOOD use the writeset to lock!!
 		int w_pos = tx->writes_pos++;
-		tx->writes[w_pos] = addr;//reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
-//		tx->w_zone[w_pos] = numa_zone;
-//    	tx->touched_zones[numa_zone] = true;
-		tx->granted_writes[w_pos] = 0;
+		tx->writes[w_pos] = (reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
+		tx->w_zone[w_pos] = numa_zone;
+    	tx->touched_zones[numa_zone] = true;
+		tx->granted_writes[w_pos] = false;
     }
 }
 
-//
-//template <typename T, size_t S>
-//  struct DISPATCH
-//  {
-//      // use this to ensure compile-time errors
-//      struct InvalidTypeAsSecondTemplateParameter { };
-//
-//      // the read method will transform a read to a sizeof(T) byte range
-//      // starting at addr into a set of stmread_word calls.  For now, the
-//      // range must be aligned on a sizeof(T) boundary, and T must be 1, 4,
-//      // or 8 bytes.
-//      FORCE_INLINE
-//      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//      {
-//          InvalidTypeAsSecondTemplateParameter itaftp;
-//          T invalid = (T)itaftp;
-//      }
-//  };
-//
-//
-//template <typename T>
-//struct DISPATCH<T, 1>
-//{
-//	FORCE_INLINE
-//    static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//    {
-//		tm_write(addr, val, 1, tx, numa_zone);
-//    }
-//};
-//template <typename T>
-//struct DISPATCH<T, 2>
-//{
-//	FORCE_INLINE
-//    static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//    {
-//		tm_write(addr, val, 2, tx, numa_zone);
-//    }
-//};
-//
-//  template <typename T>
-//  struct DISPATCH<T, 4>
-//  {
-//	  FORCE_INLINE
-//      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//      {
-//		  tm_write(addr, val, 4, tx, numa_zone);
-//      }
-//  };
-//
-//  template <typename T>
-//  struct DISPATCH<T, 8>
-//  {
-//	  FORCE_INLINE
-//      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//      {
-//		  tm_write(addr, val, 8, tx, numa_zone);
-//      }
-//  };
-//
-//
-//template <typename T>
-//FORCE_INLINE void tm_write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//{
-//	DISPATCH<T, sizeof(T)>::write(addr, val, tx, numa_zone);
-//}
+
+template <typename T, size_t S>
+  struct DISPATCH
+  {
+      // use this to ensure compile-time errors
+      struct InvalidTypeAsSecondTemplateParameter { };
+
+      // the read method will transform a read to a sizeof(T) byte range
+      // starting at addr into a set of stmread_word calls.  For now, the
+      // range must be aligned on a sizeof(T) boundary, and T must be 1, 4,
+      // or 8 bytes.
+      FORCE_INLINE
+      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
+      {
+          InvalidTypeAsSecondTemplateParameter itaftp;
+          T invalid = (T)itaftp;
+      }
+  };
+
+
+template <typename T>
+struct DISPATCH<T, 1>
+{
+	FORCE_INLINE
+    static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
+    {
+		tm_write(addr, val, 1, tx, numa_zone);
+    }
+};
+template <typename T>
+struct DISPATCH<T, 2>
+{
+	FORCE_INLINE
+    static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
+    {
+		tm_write(addr, val, 2, tx, numa_zone);
+    }
+};
+
+  template <typename T>
+  struct DISPATCH<T, 4>
+  {
+	  FORCE_INLINE
+      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
+      {
+		  tm_write(addr, val, 4, tx, numa_zone);
+      }
+  };
+
+  template <typename T>
+  struct DISPATCH<T, 8>
+  {
+	  FORCE_INLINE
+      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
+      {
+		  tm_write(addr, val, 8, tx, numa_zone);
+      }
+  };
+
+
+template <typename T>
+FORCE_INLINE void tm_write(T* addr, T val, Tx_Context* tx, int numa_zone)
+{
+	DISPATCH<T, sizeof(T)>::write(addr, val, tx, numa_zone);
+}
 
 
 #define TM_READ(var)       tm_read(&var, tx, tx->numa_zone)
@@ -400,16 +396,10 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 //		}
 		for (int j=0; j<ACCESS_SIZE; j++) {
 			tx->granted_reads[j] = false;
-			tx->granted_writes[j] = 0;
+			tx->granted_writes[j] = false;
 		}
 		for (int i=0; i<ZONES;i++) {
 			tx->start_time[i] = 0;
-		}
-		thread_locks[id] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
-		thread_locks[id]->val = 0;
-		if (id == 0) {
-			thread_locks[400] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
-			thread_locks[400]->val = 0;
 		}
 //		for (int i=0; i < SRV_COUNT; i++)
 //			lock_table[i] = get_lock_table(i);
@@ -423,13 +413,6 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 //				//tx->timestamps[i] = get_shared_mem(i, sizeof(pad_word_t));
 //			}
 //		}
-	}
-	else {
-//		printf("init local th lock pointers\n");
-		Tx_Context* tx = (Tx_Context*)Self;
-		for (int i=0; i<500; i++) {
-			tx->thread_locks[i] = thread_locks[i];
-		}
 	}
 }
 
@@ -445,6 +428,10 @@ FORCE_INLINE void tm_sys_init() {
 		for (int j=0; j<ZONES; j++)
 			ts_vectors[i]->val[j] = 1;
 		//tx->timestamps[i] = create_shared_mem(i, sizeof(pad_word_t));
+	}
+	for (int i=0; i < TABLE_SIZE; i++) {
+		lock_table[0][i].lock_owner = 0;
+		lock_table[0][i].version = 0;
 	}
 }
 
@@ -466,100 +453,30 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		return;
 	}
 
-//	bool ownership_taken = false;
-	//acquire my lock
-//	while (!__sync_bool_compare_and_swap(&(tx->thread_locks[tx->id]->val), 0, idP1)) {
-//		asm volatile ("pause");
-//	}
-	tx->thread_locks[tx->id]->val = 1;
-	//rais my flag
-	//tx->thread_locks[tx->id]->val = 1;
-
-//	int locks_gained = 0;
-//	int locks_gained[500];
-	//TODO make threads id start from 1
-	int idP1 = tx->id + 1;
-	auto tmp = 0;
-
 	bool failed = false;
 	for (int i = 0; i < tx->writes_pos; i++) {
-		tm_obj* obj = (tm_obj*) tx->writes[i];
-//		uint64_t ver = obj->ver;
-		if (obj->owner == idP1 && obj->request == 0) {
-			obj->owner_in = idP1;
-//			MFENCE;
-			if (obj->owner == idP1) {
-//				if (obj->ver == ver)
-//					obj->flag = 0;
-//				__sync_bool_compare_and_swap(&(obj->flag), idP1, 0);
-//				failed = true;
-//				break;
-//			} else {
-				tx->granted_writes[i] = 1;
-			} else {
-				obj->owner_in = -idP1;
-				failed = true;
-				break;
-			}
-//			continue;
-//		}
-//		else if (obj->owner_in || obj->request) {
-////			if (!__sync_bool_compare_and_swap(&(tx->thread_locks[obj->lock-1]->val), 0, idP1)) {
-//				failed = true;
-//				break;
-////			} else {
-////				//take ownership and unlock
-////				int th = obj->lock;
-////				obj->lock = idP1;
-////				tx->thread_locks[th-1]->val = 0; //this can be optimized by waiting until all are acquired
-////			}
-		} else
-//			if (__sync_bool_compare_and_swap(&(obj->request), 0, idP1)) {
-			if (obj->request.compare_exchange_weak(tmp, idP1)) {
-			int old_owner = obj->owner;
-			obj->owner = idP1;
-//			MFENCE;
-			if (obj->owner_in != 0 && obj->owner_in == old_owner){
-				obj->owner = old_owner;
-				obj->request = 0;
-				failed = true;
-				break;
-			} else if (obj->owner_in != 0) { //special case when a very old owner interfere
-				tx->thread_locks[tx->id]->val = 0;
-				while (tx->thread_locks[old_owner-1]->val){
-					asm volatile ("pause");
-				}
-				obj->owner_in = 0;
-				obj->request = 0;
-				failed = true;
-				break;
-			} else {
-				tx->granted_writes[i] = 2;
-			//}
-//				obj->flag2 = 0;
-//				failed = true;
-//				break;
-//			} else {
-//				obj->lock = (tx->id + 1);
-			}
-		} else {
+		//TODO check timestamp also
+		int srv_addr = tx->w_zone[i];
+		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+		if (entry_p->lock_owner == (tx->id + 1)) continue;
+		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
 			failed = true;
 			break;
 		}
-//		tx->granted_writes[i] = true;
+		tx->granted_writes[i] = true;
 	}
 	if (failed) { //unlock and abort
 		for (int i = 0; i < tx->writes_pos; i++) {
-			tm_obj* obj = (tm_obj*) tx->writes[i];
-			if (tx->granted_writes[i] == 1) {
-				obj->owner_in = 0;
-			} else if (tx->granted_writes[i] == 2) {
-				obj->request = 0;
+			if (tx->granted_writes[i]) {
+				int srv_addr = tx->w_zone[i];
+				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
+				//tx->granted_writes[i] = false;
 			} else {
 				break;
 			}
 		}
-		tx->thread_locks[tx->id]->val = 0;
+
 		tm_abort(tx, 0);
 	}
 
@@ -567,26 +484,23 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
  	bool do_abort = false;
 	//validate reads
 	for (int i = 0; i < tx->reads_pos; i++) {
-		tm_obj* obj = (tm_obj*) tx->reads[i];
-		if (obj->ver > tx->start_time[0]) {
+		int srv_addr = tx->r_zone[i];
+		lock_entry* entry_p = &(lock_table[srv_addr][tx->reads[i]]);
+		if (entry_p->version > tx->start_time[0]) {
 			do_abort = true;
-			break;
 		}
 	}
 
 	if (do_abort) {
-		//TODO May be we can keep the ownership
 		for (int i = 0; i < tx->writes_pos; i++) {
-			tm_obj* obj = (tm_obj*) tx->writes[i];
-			if (tx->granted_writes[i] == 1) {
-				obj->owner_in = 0;
-			} else if (tx->granted_writes[i] == 2) {
-				obj->request = 0;
+			if (tx->granted_writes[i]) {
+				int srv_addr = tx->w_zone[i];
+				lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+				entry_p->lock_owner = 0;
 			} else {
 				break;
 			}
 		}
-		tx->thread_locks[tx->id]->val = 0;
 		tm_abort(tx, 0);
 	}
 
@@ -594,34 +508,22 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	uintptr_t next_ts = read_tsc();// << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
-//	CFENCE;
 	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
 		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
 		while (i-- >= 0) {
 			asm volatile ("pause");
 		}
-		next_ts = read_tsc();// << LOCKBIT;
+		next_ts = read_tsc() << LOCKBIT;
 	}
 
 	//update versions & unlock
 	for (int i = 0; i < tx->writes_pos; i++) {
-		tm_obj* obj = (tm_obj*) tx->writes[i];
-		obj->ver = next_ts;
-		if (tx->granted_writes[i] == 1) {
-			obj->owner_in = 0;
-		} else if (tx->granted_writes[i] == 2) {
-			obj->request = 0;
-		}
-
-//		obj->lock = 0;
-//		obj->flag = 0;
-//		obj->flag2 = 0;
-//		uint64_t old = obj->lock;
-//		obj->lock = tx->id + 1;
-//		tx->thread_locks[old-1]->val = 0;
+		int srv_addr = tx->w_zone[i];
+		lock_entry* entry_p = &(lock_table[srv_addr][tx->writes[i]]);
+		entry_p->version = next_ts;
+		entry_p->lock_owner = 0;
 	}
 
-	tx->thread_locks[tx->id]->val = 0;
 
 	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
 	tx->commits++;

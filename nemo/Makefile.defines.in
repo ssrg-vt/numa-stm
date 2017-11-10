@@ -10,7 +10,7 @@ include Makefile.platform.in
 ########################################
 # set compiler and linker options
 CCFLAGS += -Wall -I$(ATOMIC_OPS_INCLUDE) -fno-strict-aliasing -fpermissive
-CPPFLAGS += -fno-exceptions -nostdinc++
+#CPPFLAGS += -fno-exceptions -nostdinc++
 
 ifeq ($(COMPILER), gnu)
 	CPPFLAGS += -fno-threadsafe-statics

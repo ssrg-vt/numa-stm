@@ -12,29 +12,20 @@ public class Trial extends Thread {
 	public void run() {
 		for (int kk = 0; kk < 1000000; kk++) {
 			int granted = 0;
-			
 			while (granted == 0) {
 				flags[id] = 1;
 				if (request.get() == 0 && owner.get() == id) {
-					
-					
 					owner_in.set(id);
-					
 					if (owner.get() == id) {
-						
 						granted = 1;
-						
 					}
 					else {
 						flags[id] = 0;
 						owner_in.set(-id);
-//						owner_in.compareAndSet(id, 0);
-						
 					}
 				} else if (request.compareAndSet(0, id)) {
 					int old_owner = owner.get();
 					owner.set(id);
-					
 					if (owner_in.get() != 0 && owner_in.get() == old_owner) {
 						owner.set(old_owner);
 						flags[id] = 0;
@@ -55,21 +46,12 @@ public class Trial extends Thread {
 				
 			}
 			
-			in[id] = true;
-			
-			counter++;
-			
-			while (in[1] && in[2]);
-			in[id] = false;
+			//CS
 			
 			if (granted == 2) {
-				
 				request.set(0);
-				
 			} else {
-				
 				owner_in.set(0);
-				
 			}
 			flags[id] = 0;
 		}

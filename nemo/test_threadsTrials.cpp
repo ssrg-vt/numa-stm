@@ -66,16 +66,19 @@ void* th_run(void * args)
 		signal(SIGALRM, catch_SIGALRM);
 		alarm(1);
 	}
-
+	pad_word_t mine;
 	int tx_count = 0;
 	while(ExperimentInProgress) {
 		int granted = 0;
 		while(granted == 0) {
 			flags[id] = 1;
-			MFENCE;
 			if (owner.val == id && request.val == 0) {
 				owner_in.val = id;
+				__sync_bool_compare_and_swap(&owner_in.val, owner_in.val, id);
+
 //				MFENCE;
+//				__sync_synchronize();
+//				__sync_bool_compare_and_swap(&flags[id], 1, 1);
 				if (owner.val == id) {
 					granted = 1;
 				} else {
@@ -84,8 +87,12 @@ void* th_run(void * args)
 				}
 			}else if (__sync_bool_compare_and_swap(&(request.val), 0, id)) {
 				int old_owner = owner.val;
-				owner.val = id;
+//				owner.val = id;
+				__sync_bool_compare_and_swap(&owner.val, owner.val, id);
+
 //				MFENCE;
+//				__sync_synchronize();
+//				__sync_bool_compare_and_swap(&flags[id], 1, 1);
 				while (owner_in.val != 0 && owner_in.val == old_owner){
 					asm volatile ("pause");
 				}
@@ -103,9 +110,8 @@ void* th_run(void * args)
 				flags[id] = 0;
 			}
 		}
-		while (granted == 0) {printf("no way!\n");}
 		in[id] = true;
-		counter ++;
+		counter.val ++;
 		tx_count++;
 		while (in[1] && in[2]);
 		in[id] = false;
@@ -156,6 +162,6 @@ int main(int argc, char* argv[])
 
 	printf("\nCounter should be = %llu\n", totalThroughput);
 
-	printf("counter=%d\n", counter);
+	printf("counter=%d\n", counter.val);
 	return 0;
 }

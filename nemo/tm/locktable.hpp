@@ -47,8 +47,8 @@ struct lock_entry {
 #ifdef TLC
 	uint64_t id;
 #endif
-	uint64_t lock_owner;
-	uint64_t version;
+	volatile uint64_t lock_owner;
+	volatile uint64_t version;
 };
 
 //lock_entry * create_lock_table(int numa_zone);

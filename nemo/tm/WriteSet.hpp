@@ -22,12 +22,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <atomic>
 
 struct tm_obj {
-	volatile uint64_t ver;
-	volatile int owner;
-	volatile int owner_in;
-	volatile int request;
+	std::atomic<long> ver;
+	std::atomic<int> owner;
+	std::atomic<int> owner_in;
+	std::atomic<int> request;
 	uintptr_t val;
 };
 
@@ -101,21 +102,21 @@ namespace stm
        * complicated.
        */
       void writeback() const {
-    	  ((tm_obj*)addr)->val = val.i64;
-//    	  switch(size) {
-//			  case 1:
-//				*((uint8_t*)addr) = val.i8;
-//			  break;
-//			  case 2:
-//				*((uint16_t*)addr) = val.i16;
-//			  break;
-//			  case 4:
-//				*((uint32_t*)addr) = val.i32;
-//			  break;
-//			  case 8:
-//				*((uint64_t*)addr) = val.i64;
-//			  break;
-//		  }
+    	  //((tm_obj*)addr)->val = val.i64;
+    	  switch(size) {
+			  case 1:
+				*((uint8_t*)addr) = val.i8;
+			  break;
+			  case 2:
+				*((uint16_t*)addr) = val.i16;
+			  break;
+			  case 4:
+				*((uint32_t*)addr) = val.i32;
+			  break;
+			  case 8:
+				*((uint64_t*)addr) = val.i64;
+			  break;
+		  }
       }
 
       bool validate() const {
