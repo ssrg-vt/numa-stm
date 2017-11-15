@@ -38,7 +38,7 @@ signal_callback_handler(int signum)
    exit(signum);
 }
 
-bool ExperimentInProgress = true;
+volatile bool ExperimentInProgress = true;
 static void catch_SIGALRM(int sig_num)
 {
     ExperimentInProgress = false;
@@ -111,14 +111,16 @@ void* th_run(void * args)
 	while(ExperimentInProgress) {
 		//printf("it #%d\n", i);
 		//int retries = 0;
-		int acc1[10];
+		int acc1[1000];
 
-		int acc2[10];
+		int acc2[1000];
 		bool once = true;
 		for (int j=0; j< 10; j++) {
 //			if (tx_count % 50 == 0) {
-				acc1[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-				acc2[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+				acc1[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+				acc2[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+//				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM);
+//				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM);
 //			} else {
 //				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);
 //				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);
@@ -156,6 +158,9 @@ void* th_run(void * args)
 					TM_WRITE_Z(accounts[acc2[j]], TM_READ_Z(accounts[acc2[j]],0) - 50,0);
 //				}
 			}
+//			for (int k=0; k < 100000; k++) {
+//				nop();
+//			}
 		TM_END
 //		uint64_t tx_t = tick() - start;
 //		if (tx_t > max) max=tx_t;
