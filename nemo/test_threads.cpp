@@ -119,8 +119,10 @@ void* th_run(void * args)
 //			if (tx_count % 50 == 0) {
 //				acc1[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
 //				acc2[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM);
-				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM);
+				acc1[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+				acc2[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+//				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM);
+//				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM);
 //			} else {
 //				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);
 //				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);

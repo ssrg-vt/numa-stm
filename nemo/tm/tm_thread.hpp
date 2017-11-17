@@ -545,8 +545,8 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //	}
 
 	//update versions & unlock
-	int* lock = (int*) malloc(sizeof(int));
-	*lock = 1;
+//	int* lock = (int*) malloc(sizeof(int));
+//	*lock = 1;
 
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj* obj = (tm_obj*) tx->writes[i];
@@ -557,22 +557,23 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //		MFENCE;
 		volatile int* volatile oldP = obj->lock_p;
 //		MFENCE;
-		obj->lock_p = lock;
+//		obj->lock_p = lock;
+		obj->lock_p = firstLock;
 //		MFENCE;
-		*(oldP) = 0;
-		*lock = 0;
+//		*(oldP) = 0;
+//		*lock = 0;
 //		MFENCE;
 //		MFENCE;
 //		obj->lock_p = oldP;
 //		obj->lock = 0;
 //		__sync_bool_compare_and_swap(&obj->lock_p, 0, idP1)
-//		if (oldP != firstLock)
-//			*(oldP) = 0;
+		if (oldP != firstLock)
+			*(oldP) = 0;
 	}
 //	printf("%d %d \n", tx->writes_pos, *lock);
 //	MFENCE;
 //	CFENCE;
-//	*(firstLock) = 0;
+	*(firstLock) = 0;
 
 	tx->commits++;
 }
