@@ -25,9 +25,8 @@
 
 struct tm_obj {
 	volatile uint64_t ver;
-	volatile int owner;
-	volatile int owner_in;
-	volatile int request;
+	volatile int lock;
+	volatile int* volatile lock_p;
 	uintptr_t val;
 };
 

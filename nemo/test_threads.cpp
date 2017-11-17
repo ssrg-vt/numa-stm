@@ -117,10 +117,10 @@ void* th_run(void * args)
 		bool once = true;
 		for (int j=0; j< 10; j++) {
 //			if (tx_count % 50 == 0) {
-				acc1[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-				acc2[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-//				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM);
-//				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM);
+//				acc1[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+//				acc2[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM);
+				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM);
 //			} else {
 //				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);
 //				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);
@@ -145,6 +145,10 @@ void* th_run(void * args)
 		tx_count++;
 //		uint64_t start = tick();
 		TM_BEGIN
+//		if (!ExperimentInProgress) {
+//			printf("Failed\n");
+//			return -1;
+//		}
 		//	retries++;
 			//printf("ret = %d\n", retries);
 			//if (retries >5) goto endtx;
@@ -232,10 +236,9 @@ int main(int argc, char* argv[])
 	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			accountsAll[j][i].val = 1000;
-			accountsAll[j][i].owner = 0;
+			accountsAll[j][i].lock = 0;
 			accountsAll[j][i].ver = 0;
-			accountsAll[j][i].owner_in = 0;
-			accountsAll[j][i].request = 0;
+			accountsAll[j][i].lock_p = &accountsAll[j][i].lock;
 			initSum += 1000;
 		}
 	printf("init sum = %llu\n", initSum);
@@ -304,7 +307,15 @@ int main(int argc, char* argv[])
 				c++;
 			}
 		}
-	printf("\nsum = %llu, matched = %d, not changed %llu\n", sum, sum == initSum, c);
+
+	for (int i=0; i<ACCOUT_NUM; i++) {
+		if (*accountsAll[0][i].lock_p != 0)
+			printf("||%x\t%x\n", accountsAll[0][i].lock_p, *accountsAll[0][i].lock_p);
+//			printf("||%x   %x   %d\n", accountsAll[0][i].lock_p, &accountsAll[0][i].lock, *accountsAll[0][i].lock_p);
+//		if (accountsAll[0][i].lock != 0)
+//			printf("**%x   %x   %d\n", accountsAll[0][i].lock_p, &accountsAll[0][i].lock, *accountsAll[0][i].lock_p);
+	}
+	printf("\nsum = %llu, matched = %d, changed %llu\n", sum, sum == initSum, c);
 
 	return 0;
 }
