@@ -23,11 +23,12 @@
 #include <stdio.h>
 #include <stdint.h>
 
+template <typename T>
 struct tm_obj {
 	volatile uint64_t ver;
 	volatile int lock;
 	volatile int* volatile lock_p;
-	uintptr_t val;
+	T val;
 };
 
 namespace
@@ -100,21 +101,25 @@ namespace stm
        * complicated.
        */
       void writeback() const {
-    	  ((tm_obj*)addr)->val = val.i64;
-//    	  switch(size) {
-//			  case 1:
+//    	  ((tm_obj*)addr)->val = val.i64;
+    	  switch(size) {
+			  case 1:
 //				*((uint8_t*)addr) = val.i8;
-//			  break;
-//			  case 2:
+				(((tm_obj<uint8_t>*)addr)->val) = val.i8;
+			  break;
+			  case 2:
 //				*((uint16_t*)addr) = val.i16;
-//			  break;
-//			  case 4:
+				(((tm_obj<uint16_t>*)addr)->val) = val.i16;
+			  break;
+			  case 4:
 //				*((uint32_t*)addr) = val.i32;
-//			  break;
-//			  case 8:
+				  (((tm_obj<uint32_t>*)addr)->val) = val.i32;
+			  break;
+			  case 8:
 //				*((uint64_t*)addr) = val.i64;
-//			  break;
-//		  }
+				  (((tm_obj<uint64_t>*)addr)->val) = val.i64;
+			  break;
+		  }
       }
 
       bool validate() const {

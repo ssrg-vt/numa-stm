@@ -14,7 +14,7 @@
 
 #include <errno.h>
 
-tm_obj* accountsAll[ZONES];
+tm_obj<int>* accountsAll[ZONES];
 #define ACCOUT_NUM 1048576
 
 int total_threads;
@@ -54,9 +54,9 @@ void* th_run(void * args)
     int index = (long) args >> 20;
     printf("my id %d and zone %d (index %d)\n", id, numa_zone, index);
     	
-    	tm_obj* accounts = accountsAll[0];
+    	tm_obj<int>* accounts = accountsAll[0];
 
-    	tm_obj* accounts2 = accountsAll[(numa_zone + 1) % ZONES];
+    	tm_obj<int>* accounts2 = accountsAll[(numa_zone + 1) % ZONES];
 
 	    //assume symmetric numa zones
 	    //printf("numa zones count = %d\n", numa_num_configured_nodes());
@@ -235,7 +235,7 @@ int main(int argc, char* argv[])
 	total_threads = th_per_zone? th_per_zone : 1;
 
 	for (int j=0; j < ZONES; j++) {
-		accountsAll[j] = (tm_obj*) numa_alloc_onnode(sizeof(tm_obj) * ACCOUT_NUM, j);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
+		accountsAll[j] = (tm_obj<int>*) numa_alloc_onnode(sizeof(tm_obj<int>) * ACCOUT_NUM, j);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
 	}
 
 	unsigned long long initSum = 0;

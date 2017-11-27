@@ -243,23 +243,23 @@ FORCE_INLINE void addToLogTM(int serverId, int objId, int isWrite, int isLock, i
 }
 
 
-//template <typename T>
-FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
+template <typename T>
+FORCE_INLINE T tm_read(tm_obj<T>* addr, Tx_Context* tx, int numa_zone)
 {
     WriteSetEntry log((void**)addr);
     bool found = tx->writeset->find(log);
     if (__builtin_expect(found, false))
-		return (uintptr_t) log.val.i64;
+		return (T) log.val.i64;
 
 
-    tm_obj * obj = (tm_obj *) addr;
+    tm_obj<T> * obj = (tm_obj<T> *) addr;
 
 	uint64_t v1 = obj->ver;
 	CFENCE;
-	uintptr_t val = obj->val;
+	T val = obj->val;
 	CFENCE;
 	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) || (*(obj->lock_p) > 0)) { //TODO must handle -ve owner_in issue or ignore opacity!
+	if (v1 > tx->start_time[0] || (v1 != v2) || (*(obj->lock_p) > 0)) {
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
@@ -267,10 +267,10 @@ FORCE_INLINE uintptr_t tm_read(tm_obj* addr, Tx_Context* tx, int numa_zone)
 	return val;
 }
 
-//template <typename T>
-FORCE_INLINE void tm_write(tm_obj* addr, uintptr_t val, Tx_Context* tx, int numa_zone)
+template <typename T>
+FORCE_INLINE void tm_write(tm_obj<T>* addr, T val, uint8_t size, Tx_Context* tx, int numa_zone)
 {
-    bool alreadyExists = tx->writeset->insert(WriteSetEntry((void**)addr, (uint64_t)val, 8));
+    bool alreadyExists = tx->writeset->insert(WriteSetEntry((void**)addr, (uint64_t)val, size));
     if (!alreadyExists) {//TOOD use the writeset to lock!!
 		int w_pos = tx->writes_pos++;
 		tx->writes[w_pos] = addr;//reinterpret_cast<uint64_t>(addr)>>3) % TABLE_SIZE;
@@ -280,71 +280,71 @@ FORCE_INLINE void tm_write(tm_obj* addr, uintptr_t val, Tx_Context* tx, int numa
     }
 }
 
-//
-//template <typename T, size_t S>
-//  struct DISPATCH
-//  {
-//      // use this to ensure compile-time errors
-//      struct InvalidTypeAsSecondTemplateParameter { };
-//
-//      // the read method will transform a read to a sizeof(T) byte range
-//      // starting at addr into a set of stmread_word calls.  For now, the
-//      // range must be aligned on a sizeof(T) boundary, and T must be 1, 4,
-//      // or 8 bytes.
-//      FORCE_INLINE
-//      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//      {
-//          InvalidTypeAsSecondTemplateParameter itaftp;
-//          T invalid = (T)itaftp;
-//      }
-//  };
-//
-//
-//template <typename T>
-//struct DISPATCH<T, 1>
-//{
-//	FORCE_INLINE
-//    static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//    {
-//		tm_write(addr, val, 1, tx, numa_zone);
-//    }
-//};
-//template <typename T>
-//struct DISPATCH<T, 2>
-//{
-//	FORCE_INLINE
-//    static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//    {
-//		tm_write(addr, val, 2, tx, numa_zone);
-//    }
-//};
-//
-//  template <typename T>
-//  struct DISPATCH<T, 4>
-//  {
-//	  FORCE_INLINE
-//      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//      {
-//		  tm_write(addr, val, 4, tx, numa_zone);
-//      }
-//  };
-//
-//  template <typename T>
-//  struct DISPATCH<T, 8>
-//  {
-//	  FORCE_INLINE
-//      static void write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//      {
-//		  tm_write(addr, val, 8, tx, numa_zone);
-//      }
-//  };
-//
-//
-//template <typename T>
-//FORCE_INLINE void tm_write(T* addr, T val, Tx_Context* tx, int numa_zone)
-//{
-//	DISPATCH<T, sizeof(T)>::write(addr, val, tx, numa_zone);
-//}
+
+template <typename T, size_t S>
+  struct DISPATCH
+  {
+      // use this to ensure compile-time errors
+      struct InvalidTypeAsSecondTemplateParameter { };
+
+      // the read method will transform a read to a sizeof(T) byte range
+      // starting at addr into a set of stmread_word calls.  For now, the
+      // range must be aligned on a sizeof(T) boundary, and T must be 1, 4,
+      // or 8 bytes.
+      FORCE_INLINE
+      static void write(tm_obj<T>* addr, T val, Tx_Context* tx, int numa_zone)
+      {
+          InvalidTypeAsSecondTemplateParameter itaftp;
+          T invalid = (T)itaftp;
+      }
+  };
+
+
+template <typename T>
+struct DISPATCH<T, 1>
+{
+	FORCE_INLINE
+    static void write(tm_obj<T>* addr, T val, Tx_Context* tx, int numa_zone)
+    {
+		tm_write(addr, val, 1, tx, numa_zone);
+    }
+};
+template <typename T>
+struct DISPATCH<T, 2>
+{
+	FORCE_INLINE
+    static void write(tm_obj<T>* addr, T val, Tx_Context* tx, int numa_zone)
+    {
+		tm_write(addr, val, 2, tx, numa_zone);
+    }
+};
+
+  template <typename T>
+  struct DISPATCH<T, 4>
+  {
+	  FORCE_INLINE
+      static void write(tm_obj<T>* addr, T val, Tx_Context* tx, int numa_zone)
+      {
+		  tm_write(addr, val, 4, tx, numa_zone);
+      }
+  };
+
+  template <typename T>
+  struct DISPATCH<T, 8>
+  {
+	  FORCE_INLINE
+      static void write(tm_obj<T>* addr, T val, Tx_Context* tx, int numa_zone)
+      {
+		  tm_write(addr, val, 8, tx, numa_zone);
+      }
+  };
+
+
+template <typename T>
+FORCE_INLINE void tm_write(tm_obj<T>* addr, T val, Tx_Context* tx, int numa_zone)
+{
+	DISPATCH<T, sizeof(T)>::write(addr, val, tx, numa_zone);
+}
 
 
 #define TM_READ(var)       tm_read(&var, tx, tx->numa_zone)
@@ -472,7 +472,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	bool failed = false;
 	volatile int* volatile firstLock;
 	for (int i = 0; i < tx->writes_pos; i++) {
-		tm_obj* obj = (tm_obj*) tx->writes[i];
+		tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 		if (i == 0) {
 			firstLock = obj->lock_p;
 		}
@@ -497,7 +497,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	if (failed) { //unlock and abort
 		for (int i = 0; i < tx->writes_pos; i++) {
-			tm_obj* obj = (tm_obj*) tx->writes[i];
+			tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 			if (tx->granted_writes[i] == 1) {
 				*(obj->lock_p) = 0;
 			} else if (!tx->granted_writes[i]){
@@ -511,7 +511,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
  	bool do_abort = false;
 	//validate reads
 	for (int i = 0; i < tx->reads_pos; i++) {
-		tm_obj* obj = (tm_obj*) tx->reads[i];
+		tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->reads[i];
 		if (obj->ver > tx->start_time[0]) {
 			do_abort = true;
 			break;
@@ -521,7 +521,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	if (do_abort) {
 		//TODO May be we can keep the ownership
 		for (int i = 0; i < tx->writes_pos; i++) {
-			tm_obj* obj = (tm_obj*) tx->writes[i];
+			tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 			if (tx->granted_writes[i] == 1) {
 				*(obj->lock_p) = 0;
 			}
@@ -550,7 +550,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //	*lock = 1;
 
 	for (int i = 0; i < tx->writes_pos; i++) {
-		tm_obj* obj = (tm_obj*) tx->writes[i];
+		tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 		obj->ver = next_ts;
 //		volatile int* volatile oldP = obj->lock_p;
 //		CFENCE;
