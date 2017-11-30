@@ -22,7 +22,8 @@ clean:
 	$(RM) $(OBJS) $(PROG) $(OUTPUT)
 
 $(PROG): $(OBJS)
-	$(LD) $(LDFLAGS) $^ $(LIBS) -o $(PROG) -static
+	$(LD) $(LDFLAGS) $^ $(LIBS) -o $(PROG) 
+	#-static
 
 include ../common/Makefile.common
 

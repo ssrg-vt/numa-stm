@@ -84,12 +84,12 @@ inline long get_real_time_lo() {
     return time.tv_nsec;
 }
 
-inline uint64_t tick()
-{
-    uint32_t tmp[2];
-    __asm__ ("rdtsc" : "=a" (tmp[1]), "=d" (tmp[0]) : "c" (0x10) );
-    return (((uint64_t)tmp[0]) << 32) | tmp[1];
-}
+//inline uint64_t tick()
+//{
+//    uint32_t tmp[2];
+//    __asm__ ("rdtsc" : "=a" (tmp[1]), "=d" (tmp[0]) : "c" (0x10) );
+//    return (((uint64_t)tmp[0]) << 32) | tmp[1];
+//}
 
 //============================================================
 
@@ -145,7 +145,7 @@ struct Tx_Context {
 	long commits =0, aborts =0, count=0, internuma =0, mineNotChanged=0;
 	int backoff;
 	unsigned int seed;
-	pad_word_t* thread_locks[500];
+//	pad_word_t* thread_locks[500];
 #ifdef STATISTICS
 #endif
 };
@@ -165,7 +165,7 @@ struct pad_msg_t
 
 extern pad_msg_t* comm_channel[ZONES];
 
-extern pad_word_t* thread_locks[500];
+//extern pad_word_t* thread_locks[500];
 
 
 FORCE_INLINE
@@ -405,12 +405,12 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 		for (int i=0; i<ZONES;i++) {
 			tx->start_time[i] = 0;
 		}
-		thread_locks[id] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
-		thread_locks[id]->val = 0;
-		if (id == 0) {
-			thread_locks[400] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
-			thread_locks[400]->val = 0;
-		}
+//		thread_locks[id] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
+//		thread_locks[id]->val = 0;
+//		if (id == 0) {
+//			thread_locks[400] = (pad_word_t*) numa_alloc_onnode(sizeof(pad_word_t), numa_zone);
+//			thread_locks[400]->val = 0;
+//		}
 //		for (int i=0; i < SRV_COUNT; i++)
 //			lock_table[i] = get_lock_table(i);
 
@@ -427,9 +427,9 @@ FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 	else {
 //		printf("init local th lock pointers\n");
 		Tx_Context* tx = (Tx_Context*)Self;
-		for (int i=0; i<500; i++) {
-			tx->thread_locks[i] = thread_locks[i];
-		}
+//		for (int i=0; i<500; i++) {
+//			tx->thread_locks[i] = thread_locks[i];
+//		}
 	}
 }
 
@@ -579,7 +579,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	tx->commits++;
 }
 
-#define TM_BEGIN												\
+#define TM_BEGIN2												\
 	{															\
 		Tx_Context* tx = (Tx_Context*)Self;          			\
 		tx->backoff=-1;											\
@@ -614,7 +614,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //			}
 
 
-#define TM_END                                  	\
+#define TM_END2                                  	\
 			tm_commit(tx);                          \
 		}											\
 	}

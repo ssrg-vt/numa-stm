@@ -29,6 +29,10 @@ struct tm_obj {
 	volatile int lock;
 	volatile int* volatile lock_p;
 	T val;
+//	tm_obj() {
+//		this->lock_p = &(this->lock);
+//		printf("%x\n", this->lock_p);
+//	}
 };
 
 namespace
