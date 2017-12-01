@@ -117,7 +117,7 @@ namespace stm
 			  break;
 			  case 4:
 //				*((uint32_t*)addr) = val.i32;
-				  (((tm_obj<uint32_t>*)addr)->val) = val.i32;
+				  (((tm_obj<uint32_t>*)addr)->val) = *((uint32_t*)(&val.i64));
 			  break;
 			  case 8:
 //				*((uint64_t*)addr) = val.i64;

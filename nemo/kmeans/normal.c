@@ -261,13 +261,20 @@ normal_exec (int       nthreads,
         assert(alloc_memory && new_centers && new_centers_len);
         for (i = 0; i < nclusters; i++) {
             new_centers_len[i] = (tm_obj<int>*)((char*)alloc_memory + cluster_size * i);
-			new_centers_len[i]->lock_p = &(new_centers_len[i]->lock);
+//			new_centers_len[i]->lock_p = &(new_centers_len[i]->lock);
             new_centers[i] = (tm_obj<float>*)((char*)alloc_memory + cluster_size * i + sizeof(tm_obj<int>));
-            for (int j = 0; j < cluster_size; j++) {
-            	new_centers[i][j].lock_p = &(new_centers[i][j].lock);
-			}
+//            for (int j = 0; j < cluster_size; j++) {
+//            	new_centers[i][j].lock_p = &(new_centers[i][j].lock);
+//			}
 //            new_centers[i]->lock_p = &(new_centers[i]->lock);
         }
+        for (i = 0; i < nclusters; i++) {
+            for (j = 0; j < nfeatures; j++) {
+                new_centers[i][j].lock_p = &(new_centers[i][j].lock);
+            }
+            (*new_centers_len[i]).lock_p = &((*new_centers_len[i]).lock);
+        }
+
     }
 
     TIMER_READ(start);

@@ -35,8 +35,8 @@ $(OBJ_DIR)/test_t.o: $(OBJ_DIR) $(SRC_DIR)/test_threads.cpp
 	$(CPP) $(CCFLAGS) $(CPPFLAGS) $(SRC_DIR)/test_threads.cpp -c -o $@
 
 
-$(OBJ_DIR)/WriteSet.o: $(OBJ_DIR) $(SRC_DIR)/tm/WriteSet.cpp $(SRC_DIR)/tm/WriteSet.hpp
-	$(CPP) $(CCFLAGS) $(CPPFLAGS) $(SRC_DIR)/tm/WriteSet.cpp -c -o $@
+$(OBJ_DIR)/WriteSet.o: $(OBJ_DIR) $(SRC_DIR)/tm/WriteSet.c $(SRC_DIR)/tm/WriteSet.hpp
+	$(CPP) $(CCFLAGS) $(CPPFLAGS) $(SRC_DIR)/tm/WriteSet.c -c -o $@
 
 $(OBJ_DIR)/tm_t.o: $(OBJ_DIR) $(SRC_DIR)/tm/tm_thread.c $(SRC_DIR)/tm/tm_thread.hpp
 	$(CPP) $(CCFLAGS) $(CPPFLAGS) $(SRC_DIR)/tm/tm_thread.c -c -o $@

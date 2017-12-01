@@ -14,7 +14,7 @@
 
 #include <errno.h>
 
-tm_obj<int>* accountsAll[ZONES];
+tm_obj<short>* accountsAll;
 #define ACCOUT_NUM 1048576
 
 int total_threads;
@@ -54,9 +54,9 @@ void* th_run(void * args)
     int index = (long) args >> 20;
     printf("my id %d and zone %d (index %d)\n", id, numa_zone, index);
     	
-    	tm_obj<int>* accounts = accountsAll[0];
+    	tm_obj<short>* accounts = accountsAll;
 
-    	tm_obj<int>* accounts2 = accountsAll[(numa_zone + 1) % ZONES];
+    	tm_obj<short>* accounts2 = accountsAll;
 
 	    //assume symmetric numa zones
 	    //printf("numa zones count = %d\n", numa_num_configured_nodes());
@@ -150,7 +150,7 @@ void* th_run(void * args)
 
 		tx_count++;
 //		uint64_t start = tick();
-		TM_BEGIN
+		TM_BEGIN2
 //		if (!ExperimentInProgress) {
 //			printf("Failed\n");
 //			return -1;
@@ -164,14 +164,14 @@ void* th_run(void * args)
 //					TM_WRITE_Z(accounts2[acc2[j]], TM_READ_Z(accounts2[acc2[j]], (numa_zone +1)%ZONES) - 50, (numa_zone +1)%ZONES);
 //					once = false;
 //				} else {
-					TM_WRITE_Z(accounts[acc1[j]], TM_READ_Z(accounts[acc1[j]],0) + 50,0);
-					TM_WRITE_Z(accounts[acc2[j]], TM_READ_Z(accounts[acc2[j]],0) - 50,0);
+					TM_WRITE_Z(accounts[acc1[j]],(short)(TM_READ_Z(accounts[acc1[j]],0) + 50),0);
+					TM_WRITE_Z(accounts[acc2[j]],(short)(TM_READ_Z(accounts[acc2[j]],0) - 50),0);
 //				}
 			}
 //			for (int k=0; k < 100000; k++) {
 //				nop();
 //			}
-		TM_END
+		TM_END2
 //		uint64_t tx_t = tick() - start;
 //		if (tx_t > max) max=tx_t;
 //		total +=tx_t;
@@ -234,20 +234,23 @@ int main(int argc, char* argv[])
     int th_per_zone = atoi(argv[1]);
 	total_threads = th_per_zone? th_per_zone : 1;
 
-	for (int j=0; j < ZONES; j++) {
-		accountsAll[j] = (tm_obj<int>*) numa_alloc_onnode(sizeof(tm_obj<int>) * ACCOUT_NUM, j);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
-	}
+//	for (int j=0; j < ZONES; j++) {
+		accountsAll = (tm_obj<short>*) numa_alloc_onnode(sizeof(tm_obj<short>) * ACCOUT_NUM, 0);//malloc(sizeof(long) * ACCOUT_NUM);// create_shared_mem(j, sizeof(long) * ACCOUT_NUM, SHARED_MEM_KEY5);//createSharedMem(j);
+//	}
 
-	unsigned long long initSum = 0;
-	for (int j=0; j<ZONES; j++)
+	long initSum = 0, initSum2 = 0;
+//	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
-			accountsAll[j][i].val = 1000;
-			accountsAll[j][i].lock = 0;
-			accountsAll[j][i].ver = 0;
-			accountsAll[j][i].lock_p = &accountsAll[j][i].lock;
-			initSum += 1000;
+			accountsAll[i].val = 100;
+			accountsAll[i].lock = 0;
+			accountsAll[i].ver = 0;
+			accountsAll[i].lock_p = &accountsAll[i].lock;
+			initSum += 100.0;
 		}
-	printf("init sum = %llu\n", initSum);
+		for (int i=0; i<ACCOUT_NUM; i++) {
+			initSum2 += accountsAll[i].val;
+		}
+	printf("init sum = %d, %d, %d\n", initSum, initSum2, ACCOUT_NUM*100);
 
     bitmask* mask = numa_allocate_cpumask();
 
@@ -259,6 +262,50 @@ int main(int argc, char* argv[])
     }
 	printf("cpus per node = %d\n", cpu_per_node);
 
+
+//	thread_init(1, 0, 0);
+//
+//	tm_obj<float> first;
+//	first.val = 100.5;
+//	first.lock = 0;
+//	first.lock_p = &first.lock;
+//
+//	tm_obj<char> first2;
+//	first2.val = 50;
+//	first2.lock = 0;
+//	first2.lock_p = &first2.lock;
+//
+//	tm_obj<short> first3;
+//	first3.val = 100;
+//	first3.lock = 0;
+//	first3.lock_p = &first3.lock;
+//
+//	float r, r2;
+//	char c1, c2;
+//	short s1, s2;
+//	TM_BEGIN2
+//		r = TM_READ_Z(first,0);
+//
+//		TM_WRITE_Z(first, r + 50,0);
+//
+//		c1 = TM_READ_Z(first2,0);
+//
+//		TM_WRITE_Z(first2, (char)(c1 + 50),0);
+//
+//		s1 = TM_READ_Z(first3,0);
+//
+//		TM_WRITE_Z(first3, (short)(s1 + 50),0);
+//	TM_END2
+//
+//	TM_BEGIN2
+//		r2 = TM_READ_Z(first,0);
+//		c2 = TM_READ_Z(first2,0);
+//		s2 = TM_READ_Z(first3,0);
+//	TM_END2
+//
+//	printf("floats = %f, %f\n", r, r2);
+//	printf("chars = %d, %d\n", c1, c2);
+//	printf("shorts = %d, %d\n", s1, s2);
 
 	pthread_attr_t thread_attr;
 	pthread_attr_init(&thread_attr);
@@ -303,25 +350,25 @@ int main(int argc, char* argv[])
 
 	printf("\nThroughput = %llu\n", totalThroughput);
 
-	unsigned long long sum = 0;
+	long sum = 0;
 	int c=0;
-	for (int j=0; j<ZONES; j++)
+//	for (int j=0; j<ZONES; j++)
 		for (int i=0; i<ACCOUT_NUM; i++) {
 			//printf("%d %d %d | ", accounts[i].id, accounts[i].ver, accounts[i].val);
-			sum += accountsAll[j][i].val;
-			if (j==0 && accountsAll[j][i].val != 1000) {
+			sum += accountsAll[i].val;
+			if (accountsAll[i].val != 100) {
 				c++;
 			}
 		}
 
 	for (int i=0; i<ACCOUT_NUM; i++) {
-		if (*accountsAll[0][i].lock_p != 0)
-			printf("||%x\t%x\n", accountsAll[0][i].lock_p, *accountsAll[0][i].lock_p);
+		if (*accountsAll[i].lock_p != 0)
+			printf("||%x\t%x\n", accountsAll[i].lock_p, *accountsAll[i].lock_p);
 //			printf("||%x   %x   %d\n", accountsAll[0][i].lock_p, &accountsAll[0][i].lock, *accountsAll[0][i].lock_p);
 //		if (accountsAll[0][i].lock != 0)
 //			printf("**%x   %x   %d\n", accountsAll[0][i].lock_p, &accountsAll[0][i].lock, *accountsAll[0][i].lock_p);
 	}
-	printf("\nsum = %llu, matched = %d, changed %llu\n", sum, sum == initSum, c);
+	printf("\nsum = %d, matched = %d, changed %llu\n", sum, sum == initSum, c);
 
 	return 0;
 }
