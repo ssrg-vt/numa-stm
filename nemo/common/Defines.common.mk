@@ -9,6 +9,7 @@ CC       := g++
 CFLAGS   += -g -w -pthread -mrtm -fpermissive
 CFLAGS   += -O2
 CFLAGS   += -I$(LIB)
+CFLAGS	 += -DSTATISTICS
 
 CPP      := g++
 CPPFLAGS += $(CFLAGS)

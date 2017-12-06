@@ -191,9 +191,6 @@ TM_CALLABLE
 bool_t
 TMqueue_push (TM_ARGDECL  queue_t* queuePtr, void* dataPtr);
 
-TM_CALLABLE
-bool_t
-TMqueue_push_s (TM_ARGDECL  queue_t* queuePtr, void* dataPtr);
 
 /* =============================================================================
  * queue_pop
@@ -211,9 +208,6 @@ TM_CALLABLE
 void*
 TMqueue_pop (TM_ARGDECL  queue_t* queuePtr);
 
-TM_CALLABLE
-void*
-TMqueue_pop_s (TM_ARGDECL  queue_t* queuePtr);
 
 #define PQUEUE_ALLOC(c)     Pqueue_alloc(c)
 #define PQUEUE_FREE(q)      Pqueue_free(q)
@@ -227,9 +221,7 @@ TMqueue_pop_s (TM_ARGDECL  queue_t* queuePtr);
 #define TMQUEUE_FREE(q)     TMqueue_free(TM_ARG  q)
 #define TMQUEUE_ISEMPTY(q)  TMqueue_isEmpty(TM_ARG  q)
 #define TMQUEUE_PUSH(q, d)  TMqueue_push(TM_ARG  q, (void*)(d))
-#define TMQUEUE_PUSH_S(q, d)  TMqueue_push_s(TM_ARG  q, (void*)(d))
 #define TMQUEUE_POP(q)      TMqueue_pop(TM_ARG  q)
-#define TMQUEUE_POP_S(q)    TMqueue_pop_s(TM_ARG  q)
 
 
 #ifdef __cplusplus

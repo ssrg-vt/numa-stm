@@ -49,7 +49,7 @@
 #  define TM_SHUTDOWN()                 /* nothing */
 
 #  define TM_THREAD_ENTER(a, b, c)             thread_init(a, b, c)
-#  define TM_THREAD_EXIT()
+#  define TM_THREAD_EXIT()						thread_end()
 
 #  define TM_BEGIN_WAIVER()
 #  define TM_END_WAIVER()

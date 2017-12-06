@@ -1,36 +1,78 @@
-#ifndef _GNU_SOURCE
-#define _GNU_SOURCE 1
-#endif
-
-#include <stdio.h>
-#include <pthread.h>
-#include <time.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <setjmp.h>
-
-#include <pthread.h>
-#include <signal.h>
-#include <pthread.h>
-
-#include <stdio.h>
-#include <ctype.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
-
-#include <errno.h>
+/* =============================================================================
+ *
+ * thread.c
+ *
+ * =============================================================================
+ *
+ * Copyright (C) Stanford University, 2006.  All Rights Reserved.
+ * Author: Chi Cao Minh
+ *
+ * =============================================================================
+ *
+ * For the license of bayes/sort.h and bayes/sort.c, please see the header
+ * of the files.
+ * 
+ * ------------------------------------------------------------------------
+ * 
+ * For the license of kmeans, please see kmeans/LICENSE.kmeans
+ * 
+ * ------------------------------------------------------------------------
+ * 
+ * For the license of ssca2, please see ssca2/COPYRIGHT
+ * 
+ * ------------------------------------------------------------------------
+ * 
+ * For the license of lib/mt19937ar.c and lib/mt19937ar.h, please see the
+ * header of the files.
+ * 
+ * ------------------------------------------------------------------------
+ * 
+ * For the license of lib/rbtree.h and lib/rbtree.c, please see
+ * lib/LEGALNOTICE.rbtree and lib/LICENSE.rbtree
+ * 
+ * ------------------------------------------------------------------------
+ * 
+ * Unless otherwise noted, the following license applies to STAMP files:
+ * 
+ * Copyright (c) 2007, Stanford University
+ * All rights reserved.
+ * 
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ * 
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ * 
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in
+ *       the documentation and/or other materials provided with the
+ *       distribution.
+ * 
+ *     * Neither the name of Stanford University nor the names of its
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY STANFORD UNIVERSITY ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL STANFORD UNIVERSITY BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+ * THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ * =============================================================================
+ */
 
 
 #include <assert.h>
 #include <stdlib.h>
-#include <sched.h>
-#include <unistd.h>
-#include <numa.h>
 #include "thread.h"
 #include "types.h"
-#include "random.h"
 
 static THREAD_LOCAL_T    global_threadId;
 static long              global_numThread       = 1;
@@ -42,16 +84,6 @@ static void            (*global_funcPtr)(void*) = NULL;
 static void*             global_argPtr          = NULL;
 static volatile bool_t   global_doShutdown      = FALSE;
 
-long totalThreads;
-thread_args_t* threadArgsArr;
-__thread volatile unsigned long* commits;
-__thread volatile unsigned long* aborts;
-
-int numberThreads;
-THREAD_MUTEX_T the_lock;
-
-__thread double prevSample = 0.0;
-__thread double newSample = 0.0;
 
 /* =============================================================================
  * threadWait
@@ -61,49 +93,9 @@ __thread double newSample = 0.0;
 static void
 threadWait (void* argPtr)
 {
-    thread_args_t* args = (thread_args_t*) argPtr;
-    long threadId = args->threadId;
-    commits = &(args->commits);
-    aborts = &(args->aborts);
+    long threadId = *(long*)argPtr;
 
-//    //assume symmetric numa zones
-//    printf("numa zones count = %d\n", numa_num_configured_nodes());
-//	//pin the thread to the numa zone
-//    bitmask* mask = numa_allocate_cpumask();
-//
-//    //get # of cpu per node
-//    numa_node_to_cpus(0, mask);
-//    int cpu_per_node = 0;
-//    while(numa_bitmask_isbitset(mask, cpu_per_node)) {
-//    	cpu_per_node++;
-//    }
-//
-//    printf("cpus per node = %d\n", cpu_per_node);
-//
-//    numa_bitmask_clearall(mask);
-//    numa_bitmask_setbit(mask, /*numa_zone * cpu_per_node + (id % (cpu_per_node-1)) +1*/ threadId);
-//    if (numa_sched_setaffinity(0, mask)) {
-//    	perror("numa_sched_setaffinity");
-//		exit(-1);
-//    }
-//    numa_free_cpumask(mask);
-//
-//    int curcpu = sched_getcpu();
-//    printf("cpu set to %d\n", curcpu);
-  /*  		cpu_set_t mask;
-            int status;
-
-            CPU_ZERO(&mask);
-            CPU_SET(threadId, &mask);
-            status = sched_setaffinity(0, sizeof(mask), &mask);
-            if (status != 0)
-            {
-                perror("sched_setaffinity");
-            }
-*/
     THREAD_LOCAL_SET(global_threadId, (long)threadId);
-
-    bindThread(threadId);
 
     while (1) {
         THREAD_BARRIER(global_barrierPtr, threadId); /* wait for start parallel */
@@ -118,6 +110,7 @@ threadWait (void* argPtr)
     }
 }
 
+
 /* =============================================================================
  * thread_startup
  * -- Create pool of secondary threads
@@ -128,8 +121,6 @@ void
 thread_startup (long numThread)
 {
     long i;
-
-    totalThreads = numThread;
 
     global_numThread = numThread;
     global_doShutdown = FALSE;
@@ -154,21 +145,13 @@ thread_startup (long numThread)
     global_threads = (THREAD_T*)malloc(numThread * sizeof(THREAD_T));
     assert(global_threads);
 
-    threadArgsArr = (thread_args_t*) malloc(numThread * sizeof(thread_args_t));
-    threadArgsArr[0].aborts = 0;
-    threadArgsArr[0].commits = 0;
-    threadArgsArr[0].threadId = global_threadIds[0];
-
     /* Set up pool */
     THREAD_ATTR_INIT(global_threadAttr);
     for (i = 1; i < numThread; i++) {
-        threadArgsArr[i].aborts = 0;
-        threadArgsArr[i].commits = 0;
-        threadArgsArr[i].threadId = global_threadIds[i];
         THREAD_CREATE(global_threads[i],
                       global_threadAttr,
                       &threadWait,
-                      &(threadArgsArr[i]));
+                      &global_threadIds[i]);
     }
 
     /*
@@ -176,47 +159,6 @@ thread_startup (long numThread)
      */
 }
 
-typedef struct stats_block {
-    double commits;
-    unsigned long aborts;
-    unsigned long blockId;
-    struct stats_block* next;
-} stats_block_t;
-
-static volatile int continueProfiling = 1;
-static volatile stats_block_t* head;
-
-void periodic_profiler(void* args) {
-
-    head = (stats_block_t*) malloc(sizeof(stats_block_t));
-    stats_block_t* latest = head;
-    latest->commits = 0;
-    latest->aborts = 0;
-    latest->blockId = 0;
-
-    while (continueProfiling) {
-        usleep(100000);
-        int i;
-        unsigned long totalCommits = 0;
-        unsigned long totalAborts = 0;
-        for (i = 0; i < totalThreads; i++) {
-            totalCommits += threadArgsArr[i].commits;
-            totalAborts += threadArgsArr[i].aborts;
-        }
-        //unsigned short retries = threadArgsArr[0].retries;
-        //unsigned short ucb = threadArgsArr[0].ucb;
-        stats_block_t* new1 = (stats_block_t*) malloc(sizeof(stats_block_t));
-        new1->commits = (double)totalCommits;
-        //new->aborts = totalAborts;
-        //new->retries = retries;
-        //new->ucb = ucb;
-        new1->blockId = latest->blockId + 1;
-        new1->next = NULL;
-        latest->next = new1;
-        latest = new1;
-    }
-
-}
 
 /* =============================================================================
  * thread_start
@@ -231,21 +173,8 @@ thread_start (void (*funcPtr)(void*), void* argPtr)
     global_funcPtr = funcPtr;
     global_argPtr = argPtr;
 
-    /* Profiling disabled* */
-    // THREAD_T profiler;
-    // THREAD_CREATE(profiler, global_threadAttr, &periodic_profiler, NULL);
-
-    threadWait((void*)&(threadArgsArr[0]));
-
-    continueProfiling = 0;
-
-    /* stats_block_t* previous = head;
-    while (head->next != NULL) {
-        head = head->next;
-        double throughput = (head->commits - previous->commits) / (1000000.0);
-        printf("Profiling: %lu\t%lf\n", head->blockId, throughput);
-        previous = head;
-    } */
+    long threadId = 0; /* primary */
+    threadWait((void*)&threadId);
 }
 
 
@@ -390,33 +319,33 @@ thread_barrier (thread_barrier_t* barrierPtr, long threadId)
 #else
 
 barrier_t *barrier_alloc() {
-    return (barrier_t *)malloc(sizeof(barrier_t));
+	return (barrier_t *)malloc(sizeof(barrier_t));
 }
 
 void barrier_free(barrier_t *b) {
-    free(b);
+	free(b);
 }
 
 void barrier_init(barrier_t *b, int n) {
-    pthread_cond_init(&b->complete, NULL);
-    pthread_mutex_init(&b->mutex, NULL);
-    b->count = n;
-    b->crossing = 0;
+	pthread_cond_init(&b->complete, NULL);
+	pthread_mutex_init(&b->mutex, NULL);
+	b->count = n;
+	b->crossing = 0;	
 }
 
 void barrier_cross(barrier_t *b) {
-    pthread_mutex_lock(&b->mutex);
-    /* One more thread through */
-    b->crossing++;
-    /* If not all here, wait */
-    if (b->crossing < b->count) {
-        pthread_cond_wait(&b->complete, &b->mutex);
-    } else {
-        /* Reset for next time */
-        b->crossing = 0;
-        pthread_cond_broadcast(&b->complete);
-    }
-    pthread_mutex_unlock(&b->mutex);
+	pthread_mutex_lock(&b->mutex);
+	/* One more thread through */
+	b->crossing++;
+	/* If not all here, wait */
+	if (b->crossing < b->count) {
+		pthread_cond_wait(&b->complete, &b->mutex);
+	} else {
+		/* Reset for next time */
+		b->crossing = 0;
+		pthread_cond_broadcast(&b->complete);
+	}
+	pthread_mutex_unlock(&b->mutex);	
 }
 
 

@@ -93,8 +93,6 @@
 #ifndef JSW_AVLTREE_H
 #define JSW_AVLTREE_H
 
-#include "tm.h"
-
 
 #ifdef __cplusplus
 #include <cstddef>
@@ -106,6 +104,7 @@ extern "C" {
 #include <stddef.h>
 #endif
 
+#include "tm.h"
 
 /* Opaque types */
 typedef struct jsw_avltree jsw_avltree_t;

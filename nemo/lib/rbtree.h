@@ -154,9 +154,6 @@ TM_CALLABLE
 bool_t
 TMrbtree_insert (TM_ARGDECL  rbtree_t* r, void* key, void* val);
 
-TM_CALLABLE
-bool_t
-TMrbtree_insert_s (TM_ARGDECL  rbtree_t* r, void* key, void* val);
 
 /* =============================================================================
  * rbtree_delete
@@ -174,9 +171,6 @@ TM_CALLABLE
 bool_t
 TMrbtree_delete (TM_ARGDECL  rbtree_t* r, void* key);
 
-TM_CALLABLE
-bool_t
-TMrbtree_delete_s (TM_ARGDECL  rbtree_t* r, void* key);
 
 /* =============================================================================
  * rbtree_update
@@ -196,9 +190,6 @@ TM_CALLABLE
 bool_t
 TMrbtree_update (TM_ARGDECL  rbtree_t* r, void* key, void* val);
 
-TM_CALLABLE
-bool_t
-TMrbtree_update_s (TM_ARGDECL  rbtree_t* r, void* key, void* val);
 
 /* =============================================================================
  * rbtree_get
@@ -215,10 +206,6 @@ rbtree_get (rbtree_t* r, void* key);
 TM_CALLABLE
 void*
 TMrbtree_get (TM_ARGDECL  rbtree_t* r, void* key);
-
-TM_CALLABLE
-void*
-TMrbtree_get_p (TM_ARGDECL  rbtree_t* r, void* key);
 
 
 /* =============================================================================
@@ -244,13 +231,7 @@ TMrbtree_contains (TM_ARGDECL  rbtree_t* r, void* key);
 #define TMRBTREE_DELETE(r, k)     TMrbtree_delete(TM_ARG  r, (void*)(k))
 #define TMRBTREE_UPDATE(r, k, v)  TMrbtree_update(TM_ARG  r, (void*)(k), (void*)(v))
 #define TMRBTREE_GET(r, k)        TMrbtree_get(TM_ARG  r, (void*)(k))
-#define TMRBTREE_GET_P(r, k)        TMrbtree_get_p(TM_ARG  r, (void*)(k))
 #define TMRBTREE_CONTAINS(r, k)   TMrbtree_contains(TM_ARG  r, (void*)(k))
-
-
-#define TMRBTREE_INSERT_S(r, k, v)  TMrbtree_insert_s(TM_ARG  r, (void*)(k), (void*)(v))
-#define TMRBTREE_DELETE_S(r, k)     TMrbtree_delete_s(TM_ARG  r, (void*)(k))
-#define TMRBTREE_UPDATE_S(r, k, v)  TMrbtree_update_s(TM_ARG  r, (void*)(k), (void*)(v))
 
 
 #ifdef __cplusplus

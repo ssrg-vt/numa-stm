@@ -114,9 +114,6 @@ TM_CALLABLE
 bool_t
 TMheap_insert (TM_ARGDECL  heap_t* heapPtr, void* dataPtr);
 
-TM_CALLABLE
-bool_t
-TMheap_insert_s (TM_ARGDECL  heap_t* heapPtr, void* dataPtr);
 
 /* =============================================================================
  * heap_remove
@@ -136,9 +133,6 @@ TM_CALLABLE
 void*
 TMheap_remove (TM_ARGDECL  heap_t* heapPtr);
 
-TM_CALLABLE
-void*
-TMheap_remove_s (TM_ARGDECL  heap_t* heapPtr);
 
 /* =============================================================================
  * heap_isValid
@@ -149,10 +143,7 @@ heap_isValid (heap_t* heapPtr);
 
 
 #define TMHEAP_INSERT(h, d)             TMheap_insert(TM_ARG  (h), (d))
-#define TMHEAP_INSERT_S(h, d)             TMheap_insert_s(TM_ARG  (h), (d))
 #define TMHEAP_REMOVE(h)                TMheap_remove(TM_ARG  (h))
-
-#define TMHEAP_REMOVE_S(h)                TMheap_remove_s(TM_ARG  (h))
 
 
 #endif /* HEAP_H */

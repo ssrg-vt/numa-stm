@@ -212,7 +212,11 @@ normal_exec (int       nthreads,
              random_t* randomPtr) /* out: [npoints] */
 {
 	global_delta.lock_p = &(global_delta.lock);
+	global_delta.lock = 0;
+	global_delta.ver = 0;
 	global_i.lock_p = &(global_i.lock);
+	global_i.lock = 0;
+	global_i.ver = 0;
 
     int i;
     int j;
@@ -271,8 +275,12 @@ normal_exec (int       nthreads,
         for (i = 0; i < nclusters; i++) {
             for (j = 0; j < nfeatures; j++) {
                 new_centers[i][j].lock_p = &(new_centers[i][j].lock);
+                new_centers[i][j].lock = 0;
+                new_centers[i][j].ver = 0;
             }
             (*new_centers_len[i]).lock_p = &((*new_centers_len[i]).lock);
+            (*new_centers_len[i]).lock = 0;
+			(*new_centers_len[i]).ver = 0;
         }
 
     }

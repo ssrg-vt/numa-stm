@@ -25,7 +25,7 @@ pad_word_t active_tx = {0};
 //char* tm_mem_buffer;
 //pad_word_t tm_mem_pos = {0};
 //NOT part of our library but used in STAMP
-pad_word_t counter;
+pad_word_t counter = {0};
 
 long int    FALSE = 0,
     TRUE  = 1;

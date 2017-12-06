@@ -301,9 +301,6 @@ bool_t
 TMhashtable_insert (TM_ARGDECL
                     hashtable_t* hashtablePtr, void* keyPtr, void* dataPtr);
 
-bool_t
-TMhashtable_insert_s (TM_ARGDECL
-                    hashtable_t* hashtablePtr, void* keyPtr, void* dataPtr);
 
 /* =============================================================================
  * hashtable_remove
@@ -331,10 +328,7 @@ TMhashtable_remove (TM_ARGDECL  hashtable_t* hashtablePtr, void* keyPtr);
 #define TMHASHTABLE_ISEMPTY(ht)           TMhashtable_isEmpty(TM_ARG  ht)
 #define TMHASHTABLE_GETSIZE(ht)           TMhashtable_getSize(TM_ARG  ht)
 #define TMHASHTABLE_FIND(ht, k)           TMhashtable_find(TM_ARG  ht, k)
-
 #define TMHASHTABLE_INSERT(ht, k, d)      TMhashtable_insert(TM_ARG  ht, k, d)
-#define TMHASHTABLE_INSERT_S(ht, k, d)    TMhashtable_insert_s(TM_ARG  ht, k, d)
-
 #define TMHASHTABLE_REMOVE(ht)            TMhashtable_remove(TM_ARG  ht)
 
 

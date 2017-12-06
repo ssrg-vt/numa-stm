@@ -753,39 +753,6 @@ TMhashtable_insert (TM_ARGDECL
     return TRUE;
 }
 
-bool_t
-TMhashtable_insert_s (TM_ARGDECL
-                    hashtable_t* hashtablePtr, void* keyPtr, void* dataPtr)
-{
-    long numBucket = hashtablePtr->numBucket;
-    long i = hashtablePtr->hash(keyPtr) % numBucket;
-
-    pair_t findPair;
-    findPair.firstPtr = keyPtr;
-    pair_t* pairPtr = (pair_t*)TMLIST_FIND(hashtablePtr->buckets[i], &findPair);
-    if (pairPtr != NULL) {
-        return FALSE;
-    }
-
-    pair_t* insertPtr = TMPAIR_ALLOC(keyPtr, dataPtr);
-    if (insertPtr == NULL) {
-        return FALSE;
-    }
-
-    /* Add new entry  */
-    if (TMLIST_INSERT_S(hashtablePtr->buckets[i], insertPtr) == FALSE) {
-        TMPAIR_FREE(insertPtr);
-        return FALSE;
-    }
-
-#ifdef HASHTABLE_SIZE_FIELD
-    long newSize = TM_SHARED_READ(hashtablePtr->size) + 1;
-    assert(newSize > 0);
-    TM_SHORT_WRITE(hashtablePtr->size, newSize);
-#endif
-
-    return TRUE;
-}
 
 /* =============================================================================
  * hashtable_remove

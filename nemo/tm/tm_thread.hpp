@@ -261,6 +261,7 @@ FORCE_INLINE T tm_read(tm_obj<T>* addr, Tx_Context* tx, int numa_zone)
 	CFENCE;
 	uint64_t v2 = obj->ver;
 	if (v1 > tx->start_time[0] || (v1 != v2) || (*(obj->lock_p) > 0)) {
+		//printf("error in read l=%d, v1=%lld, v2=%lld, start=%lld\n", *(obj->lock_p), v1, v2,tx->start_time[0]);
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
@@ -381,6 +382,10 @@ FORCE_INLINE void exp_backoff(Tx_Context* tx)
 //  for (int i=0; i<delay;i++) spin64();
 }
 
+FORCE_INLINE void thread_end() {
+	Tx_Context* tx = (Tx_Context*)Self;
+	printf("%d: commits = %d, aborts = %d, my zone %d, out of zone = %d\n", tx->id, tx->commits, tx->aborts, tx->numa_zone, tx->internuma);
+}
 
 FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 	if (!Self) {
@@ -505,6 +510,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 				break;
 			}
 		}
+//		printf("error in commit1");
 		tm_abort(tx, 0);
 	}
 
@@ -530,6 +536,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 //				break;
 //			}
 		}
+//		printf("error in commit2");
 		tm_abort(tx, 0);
 	}
 

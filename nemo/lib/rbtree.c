@@ -88,19 +88,19 @@
 #include "rbtree.h"
 #include "tm.h"
 
-
+//TODO it should be one lock per object
 typedef struct node {
-    void* k;
-    void* v;
-    struct node* p;
-    struct node* l;
-    struct node* r;
-    long c;
+	tm_obj<void*> k;
+	tm_obj<void*> v;
+    tm_obj<struct node*> p;
+    tm_obj<struct node*> l;
+    tm_obj<struct node*> r;
+    tm_obj<long> c;
 } node_t;
 
 
 struct rbtree {
-    node_t* root;
+	tm_obj<node_t*> root;
     long (*compare)(const void*, const void*);   /* returns {-1,0,1}, 0 -> equal */
 };
 
@@ -108,22 +108,18 @@ struct rbtree {
 #define STA(a,v)            *(a) = (v)
 #define LDV(a)              (a)
 #define STV(a,v)            (a) = (v)
-#define LDF(o,f)            ((o)->f)
-#define STF(o,f,v)          ((o)->f) = (v)
+#define LDF(o,f)            ((o)->f.val)
+#define STF(o,f,v)          ((o)->f.val) = (v)
 #define LDNODE(o,f)         ((node_t*)(LDF((o),f)))
 
 #define TX_LDA(a)           TM_SHARED_READ(*(a))
 #define TX_STA(a,v)         TM_SHARED_WRITE(*(a), v)
-#define TX_STA_S(a,v)       TM_SHORT_WRITE(*(a), v)
 #define TX_LDV(a)           TM_SHARED_READ(a)
 #define TX_STV(a,v)         TM_SHARED_WRITE_P(a, v)
-#define TX_STV_S(a,v)       TM_SHORT_WRITE(a, v)
 #define TX_LDF(o,f)         ((long)TM_SHARED_READ((o)->f))
 #define TX_LDF_P(o,f)       ((void*)TM_SHARED_READ_P((o)->f))
 #define TX_STF(o,f,v)       TM_SHARED_WRITE((o)->f, v)
 #define TX_STF_P(o,f,v)     TM_SHARED_WRITE_P((o)->f, v)
-#define TX_STF_S(o,f,v)     TM_SHORT_WRITE((o)->f, v)
-#define TX_STF_P_S(o,f,v)   TM_SHORT_WRITE((o)->f, v)
 #define TX_LDNODE(o,f)      ((node_t*)(TX_LDF_P((o),f)))
 
 /* =============================================================================
@@ -141,15 +137,7 @@ TMrotateLeft (TM_ARGDECL  rbtree_t* s, node_t* x);
 
 TM_CALLABLE
 static void
-TMrotateLeft_s (TM_ARGDECL  rbtree_t* s, node_t* x);
-
-TM_CALLABLE
-static void
 TMrotateRight (TM_ARGDECL  rbtree_t* s, node_t* x);
-
-TM_CALLABLE
-static void
-TMrotateRight_s (TM_ARGDECL  rbtree_t* s, node_t* x);
 
 TM_CALLABLE
 static inline node_t*
@@ -172,17 +160,8 @@ static inline void
 TMsetColor (TM_ARGDECL  node_t* n, long c);
 
 TM_CALLABLE
-static inline void
-TMsetColor_s (TM_ARGDECL  node_t* n, long c);
-
-TM_CALLABLE
 static void
 TMfixAfterInsertion (TM_ARGDECL  rbtree_t* s, node_t* x);
-
-TM_CALLABLE
-static void
-TMfixAfterInsertion_s (TM_ARGDECL  rbtree_t* s, node_t* x);
-
 
 TM_CALLABLE
 static node_t*
@@ -193,18 +172,8 @@ static void
 TMfixAfterDeletion  (TM_ARGDECL  rbtree_t* s, node_t*  x);
 
 TM_CALLABLE
-static void
-TMfixAfterDeletion_s (TM_ARGDECL  rbtree_t* s, node_t*  x);
-
-
-TM_CALLABLE
 static node_t*
 TMinsert (TM_ARGDECL  rbtree_t* s, void* k, void* v, node_t* n);
-
-TM_CALLABLE
-static node_t*
-TMinsert_s (TM_ARGDECL  rbtree_t* s, void* k, void* v, node_t* n);
-
 
 TM_CALLABLE
 static node_t*
@@ -214,14 +183,9 @@ TM_CALLABLE
 static node_t*
 TMdelete (TM_ARGDECL  rbtree_t* s, node_t* p);
 
-TM_CALLABLE
-static node_t*
-TMdelete_s (TM_ARGDECL  rbtree_t* s, node_t* p);
 
-//enum {
-static long int   RED   = 0,
-   BLACK = 1;
-//};
+long    RED   = 0;
+long    BLACK = 1;
 
 
 /*
@@ -281,34 +245,6 @@ TMlookup (TM_ARGDECL  rbtree_t* s, void* k)
 }
 #define TX_LOOKUP(set, key)  TMlookup(TM_ARG  set, key)
 
-
-static node_t*
-TMlookup_p (TM_ARGDECL  rbtree_t* s, void* k)
-{
-	node_t* p;
-//	TM_PART_BEGIN
-    p = TX_LDNODE(s, root);
-//	TM_PART_END
-	int found =0;
-	int c = 0;
-	while (!found && p != NULL) {
-//		TM_PART_BEGIN
-		while (p != NULL) {
-			long cmp = s->compare(k, TX_LDF_P(p, k));
-			if (cmp == 0) {
-				found = 1;
-				break;
-			} else {
-				p = ((cmp < 0) ? TX_LDNODE(p, l) : TX_LDNODE(p, r));
-			}
-			c++;
-			if (c % 20) break;
-		}
-//		TM_PART_END
-	}
-    return NULL;
-}
-#define TX_LOOKUP_P(set, key)  TMlookup_p(TM_ARG  set, key)
 
 /*
  * Balancing operations.
@@ -381,31 +317,6 @@ TMrotateLeft (TM_ARGDECL  rbtree_t* s, node_t* x)
 #define TX_ROTATE_LEFT(set, node)  TMrotateLeft(TM_ARG  set, node)
 
 
-
-static void
-TMrotateLeft_s (TM_ARGDECL  rbtree_t* s, node_t* x)
-{
-    node_t* r = TX_LDNODE(x, r); /* AKA r, y */
-    node_t* rl = TX_LDNODE(r, l);
-    TX_STF_P_S(x, r, rl);
-    if (rl != NULL) {
-        TX_STF_P_S(rl, p, x);
-    }
-    /* TODO: compute p = xp = x->p.  Use xp for R-Values in following */
-    node_t* xp = TX_LDNODE(x, p);
-    TX_STF_P_S(r, p, xp);
-    if (xp == NULL) {
-        TX_STF_P_S(s, root, r);
-    } else if (TX_LDNODE(xp, l) == x) {
-        TX_STF_P_S(xp, l, r);
-    } else {
-        TX_STF_P_S(xp, r, r);
-    }
-    TX_STF_P_S(r, l, x);
-    TX_STF_P_S(x, p, r);
-}
-#define TX_ROTATE_LEFT_S(set, node)  TMrotateLeft_s(TM_ARG  set, node)
-
 /* =============================================================================
  * rotateRight
  * =============================================================================
@@ -461,28 +372,6 @@ TMrotateRight (TM_ARGDECL  rbtree_t* s, node_t* x)
 }
 #define TX_ROTATE_RIGHT(set, node)  TMrotateRight(TM_ARG  set, node)
 
-static void
-TMrotateRight_s (TM_ARGDECL  rbtree_t* s, node_t* x)
-{
-    node_t* l = TX_LDNODE(x, l); /* AKA l,y */
-    node_t* lr = TX_LDNODE(l, r);
-    TX_STF_P_S(x, l, lr);
-    if (lr != NULL) {
-        TX_STF_P_S(lr, p, x);
-    }
-    node_t* xp = TX_LDNODE(x, p);
-    TX_STF_P_S(l, p, xp);
-    if (xp == NULL) {
-        TX_STF_P_S(s, root, l);
-    } else if (TX_LDNODE(xp, r) == x) {
-        TX_STF_P_S(xp, r, l);
-    } else {
-        TX_STF_P_S(xp, l, l);
-    }
-    TX_STF_P_S(l, r, x);
-    TX_STF_P_S(x, p, l);
-}
-#define TX_ROTATE_RIGHT_S(set, node)  TMrotateRight_s(TM_ARG  set, node)
 
 /* =============================================================================
  * parentOf
@@ -607,14 +496,6 @@ TMsetColor (TM_ARGDECL  node_t* n, long c)
 }
 #define TX_SET_COLOR(n, c)  TMsetColor(TM_ARG  n, c)
 
-static inline void
-TMsetColor_s (TM_ARGDECL  node_t* n, long c)
-{
-    if (n != NULL) {
-        TX_STF_S(n, c, c);
-    }
-}
-#define TX_SET_COLOR_S(n, c)  TMsetColor_s(TM_ARG  n, c)
 
 /* =============================================================================
  * fixAfterInsertion
@@ -735,60 +616,6 @@ TMfixAfterInsertion (TM_ARGDECL  rbtree_t* s, node_t* x)
 }
 #define TX_FIX_AFTER_INSERTION(s, x)  TMfixAfterInsertion(TM_ARG  s, x)
 
-static void
-TMfixAfterInsertion_s (TM_ARGDECL  rbtree_t* s, node_t* x)
-{
-    TX_STF_S(x, c, RED);
-    while (x != NULL && x != TX_LDNODE(s, root)) {
-        node_t* xp = TX_LDNODE(x, p);
-        if (TX_LDF(xp, c) != RED) {
-            break;
-        }
-        /* TODO: cache g = ppx = TX_PARENT_OF(TX_PARENT_OF(x)) */
-        if (TX_PARENT_OF(x) == TX_LEFT_OF(TX_PARENT_OF(TX_PARENT_OF(x)))) {
-            node_t*  y = TX_RIGHT_OF(TX_PARENT_OF(TX_PARENT_OF(x)));
-            if (TX_COLOR_OF(y) == RED) {
-                TX_SET_COLOR_S(TX_PARENT_OF(x), BLACK);
-                TX_SET_COLOR_S(y, BLACK);
-                TX_SET_COLOR_S(TX_PARENT_OF(TX_PARENT_OF(x)), RED);
-                x = TX_PARENT_OF(TX_PARENT_OF(x));
-            } else {
-                if (x == TX_RIGHT_OF(TX_PARENT_OF(x))) {
-                    x = TX_PARENT_OF(x);
-                    TX_ROTATE_LEFT_S(s, x);
-                }
-                TX_SET_COLOR_S(TX_PARENT_OF(x), BLACK);
-                TX_SET_COLOR_S(TX_PARENT_OF(TX_PARENT_OF(x)), RED);
-                if (TX_PARENT_OF(TX_PARENT_OF(x)) != NULL) {
-                    TX_ROTATE_RIGHT_S(s, TX_PARENT_OF(TX_PARENT_OF(x)));
-                }
-            }
-        } else {
-            node_t* y = TX_LEFT_OF(TX_PARENT_OF(TX_PARENT_OF(x)));
-            if (TX_COLOR_OF(y) == RED) {
-                TX_SET_COLOR_S(TX_PARENT_OF(x), BLACK);
-                TX_SET_COLOR_S(y, BLACK);
-                TX_SET_COLOR_S(TX_PARENT_OF(TX_PARENT_OF(x)), RED);
-                x = TX_PARENT_OF(TX_PARENT_OF(x));
-            } else {
-                if (x == TX_LEFT_OF(TX_PARENT_OF(x))) {
-                    x = TX_PARENT_OF(x);
-                    TX_ROTATE_RIGHT_S(s, x);
-                }
-                TX_SET_COLOR_S(TX_PARENT_OF(x),  BLACK);
-                TX_SET_COLOR_S(TX_PARENT_OF(TX_PARENT_OF(x)), RED);
-                if (TX_PARENT_OF(TX_PARENT_OF(x)) != NULL) {
-                    TX_ROTATE_LEFT_S(s, TX_PARENT_OF(TX_PARENT_OF(x)));
-                }
-            }
-        }
-    }
-    node_t* ro = TX_LDNODE(s, root);
-    if (TX_LDF(ro, c) != BLACK) {
-        TX_STF_S(ro, c, BLACK);
-    }
-}
-#define TX_FIX_AFTER_INSERTION_S(s, x)  TMfixAfterInsertion_s(TM_ARG  s, x)
 
 /* =============================================================================
  * insert
@@ -911,63 +738,6 @@ TMinsert (TM_ARGDECL  rbtree_t* s, void* k, void* v, node_t* n)
 }
 #define TX_INSERT(s, k, v, n)  TMinsert(TM_ARG  s, k, v, n)
 
-
-
-static node_t*
-TMinsert_s (TM_ARGDECL  rbtree_t* s, void* k, void* v, node_t* n)
-{
-    node_t* t  = TX_LDNODE(s, root);
-    if (t == NULL) {
-        if (n == NULL) {
-            return NULL;
-        }
-        /* Note: the following STs don't really need to be transactional */
-        TX_STF_P_S(n, l, (node_t*)NULL);
-        TX_STF_P_S(n, r, (node_t*)NULL);
-        TX_STF_P_S(n, p, (node_t*)NULL);
-        TX_STF_S(n, k, k);
-        TX_STF_S(n, v, v);
-        TX_STF_S(n, c, BLACK);
-        TX_STF_P_S(s, root, n);
-        return NULL;
-    }
-
-    for (;;) {
-        long cmp = s->compare(k, TX_LDF_P(t, k));
-        if (cmp == 0) {
-            return t;
-        } else if (cmp < 0) {
-            node_t* tl = TX_LDNODE(t, l);
-            if (tl != NULL) {
-                t = tl;
-            } else {
-                TX_STF_P_S(n, l, (node_t*)NULL);
-                TX_STF_P_S(n, r, (node_t*)NULL);
-                TX_STF_S(n, k, k);
-                TX_STF_S(n, v, v);
-                TX_STF_P_S(n, p, t);
-                TX_STF_P_S(t, l, n);
-                TX_FIX_AFTER_INSERTION_S(s, n);
-                return NULL;
-            }
-        } else { /* cmp > 0 */
-            node_t* tr = TX_LDNODE(t, r);
-            if (tr != NULL) {
-                t = tr;
-            } else {
-                TX_STF_P_S(n, l, (node_t*)NULL);
-                TX_STF_P_S(n, r, (node_t*)NULL);
-                TX_STF_S(n, k, k);
-                TX_STF_S(n, v, v);
-                TX_STF_P_S(n, p, t);
-                TX_STF_P_S(t, r, n);
-                TX_FIX_AFTER_INSERTION_S(s, n);
-                return NULL;
-            }
-        }
-    }
-}
-#define TX_INSERT_S(s, k, v, n)  TMinsert_s(TM_ARG  s, k, v, n)
 
 /*
  * Return the given node's successor node---the node which has the
@@ -1174,72 +944,6 @@ TMfixAfterDeletion  (TM_ARGDECL  rbtree_t* s, node_t* x)
 #define TX_FIX_AFTER_DELETION(s, n)  TMfixAfterDeletion(TM_ARG  s, n )
 
 
-static void
-TMfixAfterDeletion_s  (TM_ARGDECL  rbtree_t* s, node_t* x)
-{
-    while (x != TX_LDNODE(s,root) && TX_COLOR_OF(x) == BLACK) {
-        if (x == TX_LEFT_OF(TX_PARENT_OF(x))) {
-            node_t* sib = TX_RIGHT_OF(TX_PARENT_OF(x));
-            if (TX_COLOR_OF(sib) == RED) {
-                TX_SET_COLOR_S(sib, BLACK);
-                TX_SET_COLOR_S(TX_PARENT_OF(x), RED);
-                TX_ROTATE_LEFT_S(s, TX_PARENT_OF(x));
-                sib = TX_RIGHT_OF(TX_PARENT_OF(x));
-            }
-            if (TX_COLOR_OF(TX_LEFT_OF(sib)) == BLACK &&
-                TX_COLOR_OF(TX_RIGHT_OF(sib)) == BLACK) {
-                TX_SET_COLOR_S(sib, RED);
-                x = TX_PARENT_OF(x);
-            } else {
-                if (TX_COLOR_OF(TX_RIGHT_OF(sib)) == BLACK) {
-                    TX_SET_COLOR_S(TX_LEFT_OF(sib), BLACK);
-                    TX_SET_COLOR_S(sib, RED);
-                    TX_ROTATE_RIGHT_S(s, sib);
-                    sib = TX_RIGHT_OF(TX_PARENT_OF(x));
-                }
-                TX_SET_COLOR_S(sib, TX_COLOR_OF(TX_PARENT_OF(x)));
-                TX_SET_COLOR_S(TX_PARENT_OF(x), BLACK);
-                TX_SET_COLOR_S(TX_RIGHT_OF(sib), BLACK);
-                TX_ROTATE_LEFT_S(s, TX_PARENT_OF(x));
-                /* TODO: consider break ... */
-                x = TX_LDNODE(s,root);
-            }
-        } else { /* symmetric */
-            node_t* sib = TX_LEFT_OF(TX_PARENT_OF(x));
-
-            if (TX_COLOR_OF(sib) == RED) {
-                TX_SET_COLOR_S(sib, BLACK);
-                TX_SET_COLOR_S(TX_PARENT_OF(x), RED);
-                TX_ROTATE_RIGHT_S(s, TX_PARENT_OF(x));
-                sib = TX_LEFT_OF(TX_PARENT_OF(x));
-            }
-            if (TX_COLOR_OF(TX_RIGHT_OF(sib)) == BLACK &&
-                TX_COLOR_OF(TX_LEFT_OF(sib)) == BLACK) {
-                TX_SET_COLOR_S(sib,  RED);
-                x = TX_PARENT_OF(x);
-            } else {
-                if (TX_COLOR_OF(TX_LEFT_OF(sib)) == BLACK) {
-                    TX_SET_COLOR_S(TX_RIGHT_OF(sib), BLACK);
-                    TX_SET_COLOR_S(sib, RED);
-                    TX_ROTATE_LEFT_S(s, sib);
-                    sib = TX_LEFT_OF(TX_PARENT_OF(x));
-                }
-                TX_SET_COLOR_S(sib, TX_COLOR_OF(TX_PARENT_OF(x)));
-                TX_SET_COLOR_S(TX_PARENT_OF(x), BLACK);
-                TX_SET_COLOR_S(TX_LEFT_OF(sib), BLACK);
-                TX_ROTATE_RIGHT_S(s, TX_PARENT_OF(x));
-                /* TODO: consider break ... */
-                x = TX_LDNODE(s, root);
-            }
-        }
-    }
-
-    if (x != NULL && TX_LDF(x,c) != BLACK) {
-       TX_STF_S(x, c, BLACK);
-    }
-}
-#define TX_FIX_AFTER_DELETION_S(s, n)  TMfixAfterDeletion_s(TM_ARG  s, n )
-
 /* =============================================================================
  * delete_node
  * =============================================================================
@@ -1370,66 +1074,6 @@ TMdelete (TM_ARGDECL  rbtree_t* s, node_t* p)
 #define TX_DELETE(s, n)  TMdelete(TM_ARG  s, n)
 
 
-static node_t*
-TMdelete_s (TM_ARGDECL  rbtree_t* s, node_t* p)
-{
-    /*
-     * If strictly internal, copy successor's element to p and then make p
-     * point to successor
-     */
-    if (TX_LDNODE(p, l) != NULL && TX_LDNODE(p, r) != NULL) {
-        node_t* s = TX_SUCCESSOR(p);
-        TX_STF_S(p,k, TX_LDF_P(s, k));
-        TX_STF_S(p,v, TX_LDF_P(s, v));
-        p = s;
-    } /* p has 2 children */
-
-    /* Start fixup at replacement node, if it exists */
-    node_t* replacement =
-        ((TX_LDNODE(p, l) != NULL) ? TX_LDNODE(p, l) : TX_LDNODE(p, r));
-
-    if (replacement != NULL) {
-        /* Link replacement to parent */
-        /* TODO: precompute pp = p->p and substitute below ... */
-        TX_STF_P_S(replacement, p, TX_LDNODE(p, p));
-        node_t* pp = TX_LDNODE(p, p);
-        if (pp == NULL) {
-            TX_STF_P_S(s, root, replacement);
-        } else if (p == TX_LDNODE(pp, l)) {
-            TX_STF_P_S(pp, l, replacement);
-        } else {
-            TX_STF_P_S(pp, r, replacement);
-        }
-
-        /* Null out links so they are OK to use by fixAfterDeletion */
-        TX_STF_P_S(p, l, (node_t*)NULL);
-        TX_STF_P_S(p, r, (node_t*)NULL);
-        TX_STF_P_S(p, p, (node_t*)NULL);
-
-        /* Fix replacement */
-        if (TX_LDF(p,c) == BLACK) {
-            TX_FIX_AFTER_DELETION_S(s, replacement);
-        }
-    } else if (TX_LDNODE(p,p) == NULL) { /* return if we are the only node */
-        TX_STF_P_S(s, root, (node_t*)NULL);
-    } else { /* No children. Use self as phantom replacement and unlink */
-        if (TX_LDF(p,c) == BLACK) {
-            TX_FIX_AFTER_DELETION_S(s, p);
-        }
-        node_t* pp = TX_LDNODE(p, p);
-        if (pp != NULL) {
-            if (p == TX_LDNODE(pp, l)) {
-                TX_STF_P_S(pp,l, (node_t*)NULL);
-            } else if (p == TX_LDNODE(pp, r)) {
-                TX_STF_P_S(pp, r, (node_t*)NULL);
-            }
-            TX_STF_P_S(p, p, (node_t*)NULL);
-        }
-    }
-    return p;
-}
-#define TX_DELETE_S(s, n)  TMdelete_s(TM_ARG  s, n)
-
 /*
  * Diagnostic section
  */
@@ -1442,10 +1086,10 @@ TMdelete_s (TM_ARGDECL  rbtree_t* s, node_t* p)
 static node_t*
 firstEntry (rbtree_t* s)
 {
-    node_t* p = s->root;
+    node_t* p = s->root.val;
     if (p != NULL) {
-        while (p->l != NULL) {
-            p = p->l;
+        while (p->l.val != NULL) {
+            p = p->l.val;
         }
     }
     return p;
@@ -1512,8 +1156,8 @@ verifyRedBlack (node_t* root, long depth)
         return 1;
     }
 
-    height_left  = verifyRedBlack(root->l, depth+1);
-    height_right = verifyRedBlack(root->r, depth+1);
+    height_left  = verifyRedBlack(root->l.val, depth+1);
+    height_right = verifyRedBlack(root->r.val, depth+1);
     if (height_left == 0 || height_right == 0) {
         return 0;
     }
@@ -1521,26 +1165,26 @@ verifyRedBlack (node_t* root, long depth)
         printf(" Imbalance @depth=%ld : %ld %ld\n", depth, height_left, height_right);
     }
 
-    if (root->l != NULL && root->l->p != root) {
+    if (root->l.val != NULL && root->l.val->p.val != root) {
        printf(" lineage\n");
     }
-    if (root->r != NULL && root->r->p != root) {
+    if (root->r.val != NULL && root->r.val->p.val != root) {
        printf(" lineage\n");
     }
 
     /* Red-Black alternation */
-    if (root->c == RED) {
-        if (root->l != NULL && root->l->c != BLACK) {
+    if (root->c.val == RED) {
+        if (root->l.val != NULL && root->l.val->c.val != BLACK) {
           printf("VERIFY %d\n", __LINE__);
           return 0;
         }
-        if (root->r != NULL && root->r->c != BLACK) {
+        if (root->r.val != NULL && root->r.val->c.val != BLACK) {
           printf("VERIFY %d\n", __LINE__);
           return 0;
         }
         return height_left;
     }
-    if (root->c != BLACK) {
+    if (root->c.val != BLACK) {
         printf("VERIFY %d\n", __LINE__);
         return 0;
     }
@@ -1556,7 +1200,7 @@ verifyRedBlack (node_t* root, long depth)
 long
 rbtree_verify (rbtree_t* s, long verbose)
 {
-    node_t* root = s->root;
+    node_t* root = s->root.val;
     if (root == NULL) {
         return 1;
     }
@@ -1564,14 +1208,14 @@ rbtree_verify (rbtree_t* s, long verbose)
        printf("Integrity check: ");
     }
 
-    if (root->p != NULL) {
+    if (root->p.val != NULL) {
         printf("  (WARNING) root %lX parent=%lX\n",
-               (unsigned long)root, (unsigned long)root->p);
+               (unsigned long)root, (unsigned long)root->p.val);
         return -1;
     }
-    if (root->c != BLACK) {
+    if (root->c.val != BLACK) {
         printf("  (WARNING) root %lX color=%lX\n",
-               (unsigned long)root, (unsigned long)root->c);
+               (unsigned long)root, (unsigned long)root->c.val);
     }
 
     /* Weak check of binary-tree property */
@@ -1579,22 +1223,22 @@ rbtree_verify (rbtree_t* s, long verbose)
     node_t* its = firstEntry(s);
     while (its != NULL) {
         ctr++;
-        node_t* child = its->l;
-        if (child != NULL && child->p != its) {
+        node_t* child = its->l.val;
+        if (child != NULL && child->p.val != its) {
             printf("Bad parent\n");
         }
-        child = its->r;
-        if (child != NULL && child->p != its) {
+        child = its->r.val;
+        if (child != NULL && child->p.val != its) {
             printf("Bad parent\n");
         }
         node_t* nxt = successor(its);
         if (nxt == NULL) {
             break;
         }
-        if (s->compare(its->k, nxt->k) >= 0) {
+        if (s->compare(its->k.val, nxt->k.val) >= 0) {
             printf("Key order %lX (%ld %ld) %lX (%ld %ld)\n",
-                   (unsigned long)its, (long)its->k, (long)its->v,
-                   (unsigned long)nxt, (long)nxt->k, (long)nxt->v);
+                   (unsigned long)its, (long)its->k.val, (long)its->v.val,
+                   (unsigned long)nxt, (long)nxt->k.val, (long)nxt->v.val);
             return -3;
         }
         its = nxt;
@@ -1630,7 +1274,10 @@ rbtree_alloc (long (*compare)(const void*, const void*))
     rbtree_t* n = (rbtree_t* )malloc(sizeof(*n));
     if (n) {
         n->compare = (compare ? compare : &compareKeysDefault);
-        n->root = NULL;
+        n->root.val = NULL;
+        n->root.lock_p = &(n->root.lock);
+        n->root.lock = 0;
+        n->root.ver = 0;
     }
     return n;
 }
@@ -1646,7 +1293,10 @@ TMrbtree_alloc (TM_ARGDECL  long (*compare)(const void*, const void*))
     rbtree_t* n = (rbtree_t* )TM_MALLOC(sizeof(*n));
     if (n){
         n->compare = (compare ? compare : &compareKeysDefault);
-        n->root = NULL;
+        n->root.val = NULL;
+        n->root.lock_p = &(n->root.lock);
+        n->root.lock = 0;
+        n->root.ver = 0;
     }
     return n;
 }
@@ -1684,8 +1334,8 @@ static void
 freeNode (node_t* n)
 {
     if (n) {
-        freeNode(n->l);
-        freeNode(n->r);
+        freeNode(n->l.val);
+        freeNode(n->r.val);
         releaseNode(n);
     }
 }
@@ -1699,8 +1349,8 @@ static void
 TMfreeNode (TM_ARGDECL  node_t* n)
 {
     if (n) {
-        TMfreeNode(TM_ARG  n->l);
-        TMfreeNode(TM_ARG  n->r);
+        TMfreeNode(TM_ARG  n->l.val);
+        TMfreeNode(TM_ARG  n->r.val);
         TMreleaseNode(TM_ARG  n);
     }
 }
@@ -1713,7 +1363,7 @@ TMfreeNode (TM_ARGDECL  node_t* n)
 void
 rbtree_free (rbtree_t* r)
 {
-    freeNode(r->root);
+    freeNode(r->root.val);
     free(r);
 }
 
@@ -1725,7 +1375,7 @@ rbtree_free (rbtree_t* r)
 void
 TMrbtree_free (TM_ARGDECL  rbtree_t* r)
 {
-    TMfreeNode(TM_ARG  r->root);
+    TMfreeNode(TM_ARG  r->root.val);
     TM_FREE(r);
 }
 
@@ -1738,6 +1388,24 @@ static node_t*
 getNode ()
 {
     node_t* n = (node_t*)malloc(sizeof(*n));
+    n->k.lock_p = &(n->k.lock);
+    n->k.lock = 0;
+    n->k.ver = 0;
+    n->v.lock_p = &(n->v.lock);
+    n->v.lock = 0;
+    n->v.ver = 0;
+	n->p.lock_p = &(n->p.lock);
+	n->p.lock = 0;
+	n->p.ver = 0;
+	n->l.lock_p = &(n->l.lock);
+	n->l.lock = 0;
+	n->l.ver = 0;
+	n->r.lock_p = &(n->r.lock);
+	n->r.lock = 0;
+	n->r.ver = 0;
+	n->c.lock_p = &(n->c.lock);
+	n->c.lock = 0;
+	n->c.ver = 0;
     return n;
 }
 
@@ -1750,6 +1418,24 @@ static node_t*
 TMgetNode (TM_ARGDECL_ALONE)
 {
     node_t* n = (node_t*)TM_MALLOC(sizeof(*n));
+    n->k.lock_p = &(n->k.lock);
+    n->k.lock = 0;
+    n->k.ver = 0;
+    n->v.lock_p = &(n->v.lock);
+    n->v.lock = 0;
+    n->v.ver = 0;
+	n->p.lock_p = &(n->p.lock);
+	n->p.lock = 0;
+	n->p.ver = 0;
+	n->l.lock_p = &(n->l.lock);
+	n->l.lock = 0;
+	n->l.ver = 0;
+	n->r.lock_p = &(n->r.lock);
+	n->r.lock = 0;
+	n->r.ver = 0;
+	n->c.lock_p = &(n->c.lock);
+	n->c.lock = 0;
+	n->c.ver = 0;
     return n;
 }
 
@@ -1787,17 +1473,6 @@ TMrbtree_insert (TM_ARGDECL  rbtree_t* r, void* key, void* val)
     return ((ex == NULL) ? TRUE : FALSE);
 }
 
-
-bool_t
-TMrbtree_insert_s (TM_ARGDECL  rbtree_t* r, void* key, void* val)
-{
-    node_t* node = TMgetNode(TM_ARG_ALONE);
-    node_t* ex = TX_INSERT_S(r, key, val, node);
-    if (ex != NULL) {
-        TMreleaseNode(TM_ARG  node);
-    }
-    return ((ex == NULL) ? TRUE : FALSE);
-}
 
 /* =============================================================================
  * rbtree_delete
@@ -1838,19 +1513,6 @@ TMrbtree_delete (TM_ARGDECL  rbtree_t* r, void* key)
     return ((node != NULL) ? TRUE : FALSE);
 }
 
-bool_t
-TMrbtree_delete_s (TM_ARGDECL  rbtree_t* r, void* key)
-{
-    node_t* node = NULL;
-    node = TX_LOOKUP(r, key);
-    if (node != NULL) {
-        node = TX_DELETE_S(r, node);
-    }
-    if (node != NULL) {
-        TMreleaseNode(TM_ARG  node);
-    }
-    return ((node != NULL) ? TRUE : FALSE);
-}
 
 /* =============================================================================
  * rbtree_update
@@ -1889,18 +1551,6 @@ TMrbtree_update (TM_ARGDECL  rbtree_t* r, void* key, void* val)
     return FALSE;
 }
 
-bool_t
-TMrbtree_update_s (TM_ARGDECL  rbtree_t* r, void* key, void* val)
-{
-    node_t* nn = TMgetNode(TM_ARG_ALONE);
-    node_t* ex = TX_INSERT_S(r, key, val, nn);
-    if (ex != NULL) {
-        TX_STF_S(ex, v, val);
-        TMreleaseNode(TM_ARG  nn);
-        return TRUE;
-    }
-    return FALSE;
-}
 
 /* =============================================================================
  * rbtree_get
@@ -1931,19 +1581,6 @@ TMrbtree_get (TM_ARGDECL  rbtree_t* r, void* key) {
     return NULL;
 }
 
-
-void*
-TMrbtree_get_p (TM_ARGDECL  rbtree_t* r, void* key) {
-    node_t* n = TX_LOOKUP_P(r, key);
-    if (n != NULL) {
-        void* val;
-        TM_PART_BEGIN
-        val = TX_LDF_P(n, v);
-        TM_PART_END
-        return val;
-    }
-    return NULL;
-}
 
 /* =============================================================================
  * rbtree_contains

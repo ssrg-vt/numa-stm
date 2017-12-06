@@ -73,6 +73,7 @@
 #ifndef TYPES_H
 #define TYPES_H 1
 
+#include <jemalloc/jemalloc.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -88,10 +89,8 @@ extern "C" {
 
 typedef unsigned long ulong_t;
 
-//enum {
-extern	long int    FALSE,
-    TRUE  ;
-//};
+#define   FALSE  0
+#define   TRUE   1
 
 typedef long bool_t;
 

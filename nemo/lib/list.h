@@ -84,16 +84,16 @@ extern "C" {
 
 
 typedef struct list_node {
-    void* dataPtr;
-    struct list_node* nextPtr;
+	tm_obj<void*> dataPtr;
+    tm_obj<struct list_node*> nextPtr;
 } list_node_t;
 
 typedef list_node_t* list_iter_t;
 
 typedef struct list {
-    list_node_t head;
+	tm_obj<list_node_t> head;
     long (*compare)(const void*, const void*);   /* returns {-1,0,1}, 0 -> equal */
-    long size;
+    tm_obj<long> size;
 } list_t;
 
 
@@ -291,9 +291,6 @@ TM_CALLABLE
 bool_t
 TMlist_insert (TM_ARGDECL  list_t* listPtr, void* dataPtr);
 
-TM_CALLABLE
-bool_t
-TMlist_insert_s (TM_ARGDECL  list_t* listPtr, void* dataPtr);
 
 /* =============================================================================
  * list_remove
@@ -322,9 +319,6 @@ TM_CALLABLE
 bool_t
 TMlist_remove (TM_ARGDECL  list_t* listPtr, void* dataPtr);
 
-TM_CALLABLE
-bool_t
-TMlist_remove_s (TM_ARGDECL  list_t* listPtr, void* dataPtr);
 
 /* =============================================================================
  * list_clear
@@ -363,16 +357,6 @@ Plist_clear (list_t* listPtr);
 #define TMLIST_INSERT(list, data)       TMlist_insert(TM_ARG  list, data)
 #define TMLIST_REMOVE(list, data)       TMlist_remove(TM_ARG  list, data)
 
-#define TMLIST_ITER_RESET_S(it, list)     TMlist_iter_reset(TM_ARG  it, list)
-#define TMLIST_ITER_HASNEXT_S(it, list)   TMlist_iter_hasNext(TM_ARG  it, list)
-#define TMLIST_ITER_NEXT_S(it, list)      TMlist_iter_next_s(TM_ARG  it, list)
-#define TMLIST_ALLOC_S(cmp)               TMlist_alloc_s(TM_ARG  cmp)
-#define TMLIST_FREE_S(list)               TMlist_free_s(TM_ARG  list)
-#define TMLIST_GETSIZE_S(list)            TMlist_getSize_s(TM_ARG  list)
-#define TMLIST_ISEMPTY_S(list)            TMlist_isEmpty_s(TM_ARG  list)
-#define TMLIST_FIND_S(list, data)         TMlist_find_s(TM_ARG  list, data)
-#define TMLIST_INSERT_S(list, data)       TMlist_insert_s(TM_ARG  list, data)
-#define TMLIST_REMOVE_S(list, data)       TMlist_remove_s(TM_ARG  list, data)
 
 #ifdef __cplusplus
 }

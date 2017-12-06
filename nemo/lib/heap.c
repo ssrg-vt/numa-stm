@@ -188,26 +188,6 @@ TMsiftUp (TM_ARGDECL  heap_t* heapPtr, long startIndex)
     }
 }
 
-static void
-TMsiftUp_s (TM_ARGDECL  heap_t* heapPtr, long startIndex)
-{
-    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
-    long (*compare)(const void*, const void*) = heapPtr->compare;
-
-    long index = startIndex;
-    while ((index > 1)) {
-        long parentIndex = PARENT(index);
-        void* parentPtr = (void*)TM_SHARED_READ_P(elements[parentIndex]);
-        void* thisPtr   = (void*)TM_SHARED_READ_P(elements[index]);
-        if (compare(parentPtr, thisPtr) >= 0) {
-            break;
-        }
-        void* tmpPtr = parentPtr;
-        TM_SHORT_WRITE(elements[parentIndex], thisPtr);
-        TM_SHORT_WRITE(elements[index], tmpPtr);
-        index = parentIndex;
-    }
-}
 
 /* =============================================================================
  * heap_insert
@@ -252,15 +232,10 @@ heap_insert (heap_t* heapPtr, void* dataPtr)
 bool_t
 TMheap_insert (TM_ARGDECL  heap_t* heapPtr, void* dataPtr)
 {
-	long size;
-	long capacity;
-	TM_PART_BEGIN
-    size = (long)TM_SHARED_READ(heapPtr->size);
-    capacity = (long)TM_SHARED_READ(heapPtr->capacity);
-    TM_PART_END
+    long size = (long)TM_SHARED_READ(heapPtr->size);
+    long capacity = (long)TM_SHARED_READ(heapPtr->capacity);
 
     if ((size + 1) >= capacity) {
-    	TM_PART_BEGIN
         long newCapacity = capacity * 2;
         void** newElements = (void**)TM_MALLOC(newCapacity * sizeof(void*));
         if (newElements == NULL) {
@@ -274,54 +249,17 @@ TMheap_insert (TM_ARGDECL  heap_t* heapPtr, void* dataPtr)
         }
         TM_FREE(heapPtr->elements);
         TM_SHARED_WRITE(heapPtr->elements, newElements);
-        TM_PART_END
     }
 
     size++;
-    TM_PART_BEGIN
     TM_SHARED_WRITE(heapPtr->size, size);
     void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
     TM_SHARED_WRITE_P(elements[size], dataPtr);
-    TM_PART_END
-
-    TM_PART_BEGIN
     TMsiftUp(TM_ARG  heapPtr, size);
-    TM_PART_END
+
     return TRUE;
 }
 
-bool_t
-TMheap_insert_s (TM_ARGDECL  heap_t* heapPtr, void* dataPtr)
-{
-	long size;
-	long capacity;
-    size = (long)TM_SHARED_READ(heapPtr->size);
-    capacity = (long)TM_SHARED_READ(heapPtr->capacity);
-
-    if ((size + 1) >= capacity) {
-        long newCapacity = capacity * 2;
-        void** newElements = (void**)TM_MALLOC(newCapacity * sizeof(void*));
-        if (newElements == NULL) {
-            return FALSE;
-        }
-        TM_SHORT_WRITE(heapPtr->capacity, newCapacity);
-        long i;
-        void** elements = TM_SHARED_READ_P(heapPtr->elements);
-        for (i = 0; i <= size; i++) {
-            newElements[i] = (void*)TM_SHARED_READ_P(elements[i]);
-        }
-        TM_FREE(heapPtr->elements);
-        TM_SHORT_WRITE(heapPtr->elements, newElements);
-    }
-
-    size++;
-    TM_SHORT_WRITE(heapPtr->size, size);
-    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
-    TM_SHORT_WRITE(elements[size], dataPtr);
-
-    TMsiftUp_s(TM_ARG  heapPtr, size);
-    return TRUE;
-}
 
 /* =============================================================================
  * heapify
@@ -372,106 +310,14 @@ heapify (heap_t* heapPtr, long startIndex)
  * TMheapify
  * =============================================================================
  */
-#define SPLIT_LIMIT 20
 static void
 TMheapify (TM_ARGDECL  heap_t* heapPtr, long startIndex)
 {
-	void** elements;
+    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
     long (*compare)(const void*, const void*) = heapPtr->compare;
+
+    long size = (long)TM_SHARED_READ(heapPtr->size);
     long index = startIndex;
-    long size;
-	TM_PART_BEGIN
-		elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
-		size = (long)TM_SHARED_READ(heapPtr->size);
-    TM_PART_END
-
-//    TM_PART_BEGIN
-//    while (1) {
-//
-//        long leftIndex = LEFT_CHILD(index);
-//        long rightIndex = RIGHT_CHILD(index);
-//        long maxIndex = -1;
-//
-//        if ((leftIndex <= size) &&
-//            (compare((void*)TM_SHARED_READ_P(elements[leftIndex]),
-//                     (void*)TM_SHARED_READ_P(elements[index])) > 0))
-//        {
-//            maxIndex = leftIndex;
-//        } else {
-//            maxIndex = index;
-//        }
-//
-//        if ((rightIndex <= size) &&
-//            (compare((void*)TM_SHARED_READ_P(elements[rightIndex]),
-//                     (void*)TM_SHARED_READ_P(elements[maxIndex])) > 0))
-//        {
-//            maxIndex = rightIndex;
-//        }
-//
-//        if (maxIndex == index) {
-//            break;
-//        } else {
-//            void* tmpPtr = (void*)TM_SHARED_READ_P(elements[index]);
-//            TM_SHARED_WRITE_P(elements[index],
-//                              (void*)TM_SHARED_READ(elements[maxIndex]));
-//            TM_SHARED_WRITE_P(elements[maxIndex], tmpPtr);
-//            index = maxIndex;
-//        }
-//    }
-//    TM_PART_END
-
-
-    int splitCount = 0;
-    int noBreak = 1;
-    while (noBreak) {
-    	TM_PART_BEGIN
-		while (1) {
-			long leftIndex = LEFT_CHILD(index);
-			long rightIndex = RIGHT_CHILD(index);
-			long maxIndex = -1;
-
-			if ((leftIndex <= size) &&
-				(compare((void*)TM_SHARED_READ_P(elements[leftIndex]),
-						 (void*)TM_SHARED_READ_P(elements[index])) > 0))
-			{
-				maxIndex = leftIndex;
-			} else {
-				maxIndex = index;
-			}
-
-			if ((rightIndex <= size) &&
-				(compare((void*)TM_SHARED_READ_P(elements[rightIndex]),
-						 (void*)TM_SHARED_READ_P(elements[maxIndex])) > 0))
-			{
-				maxIndex = rightIndex;
-			}
-
-			if (maxIndex == index) {
-				noBreak = 0;
-				break;
-			} else {
-				void* tmpPtr = (void*)TM_SHARED_READ_P(elements[index]);
-				TM_SHARED_WRITE_P(elements[index],
-								  (void*)TM_SHARED_READ(elements[maxIndex]));
-				TM_SHARED_WRITE_P(elements[maxIndex], tmpPtr);
-				index = maxIndex;
-			}
-			if (splitCount % SPLIT_LIMIT) break;
-		}
-    	TM_PART_END
-    }
-}
-
-
-static void
-TMheapify_s (TM_ARGDECL  heap_t* heapPtr, long startIndex)
-{
-	void** elements;
-    long (*compare)(const void*, const void*) = heapPtr->compare;
-    long index = startIndex;
-    long size;
-	elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
-	size = (long)TM_SHARED_READ(heapPtr->size);
 
     while (1) {
 
@@ -499,13 +345,15 @@ TMheapify_s (TM_ARGDECL  heap_t* heapPtr, long startIndex)
             break;
         } else {
             void* tmpPtr = (void*)TM_SHARED_READ_P(elements[index]);
-            TM_SHORT_WRITE(elements[index],
+            TM_SHARED_WRITE_P(elements[index],
                               (void*)TM_SHARED_READ(elements[maxIndex]));
-            TM_SHORT_WRITE(elements[maxIndex], tmpPtr);
+            TM_SHARED_WRITE_P(elements[maxIndex], tmpPtr);
             index = maxIndex;
         }
     }
 }
+
+
 
 /* =============================================================================
  * heap_remove
@@ -539,46 +387,21 @@ heap_remove (heap_t* heapPtr)
 void*
 TMheap_remove (TM_ARGDECL  heap_t* heapPtr)
 {
-	long size;
-	void* dataPtr;
-	TM_PART_BEGIN
-		size = (long)TM_SHARED_READ(heapPtr->size);
-		if (size >= 1) {
-			void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
-			dataPtr = (void*)TM_SHARED_READ_P(elements[1]);
-			TM_SHARED_WRITE_P(elements[1], TM_SHARED_READ_P(elements[size]));
-			TM_SHARED_WRITE(heapPtr->size, (size - 1));
-		}
-    TM_PART_END
-	if (size < 1) {
-		return NULL;
-	}
+    long size = (long)TM_SHARED_READ(heapPtr->size);
 
+    if (size < 1) {
+        return NULL;
+    }
+
+    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
+    void* dataPtr = (void*)TM_SHARED_READ_P(elements[1]);
+    TM_SHARED_WRITE_P(elements[1], TM_SHARED_READ_P(elements[size]));
+    TM_SHARED_WRITE(heapPtr->size, (size - 1));
     TMheapify(TM_ARG  heapPtr, 1);
 
     return dataPtr;
 }
 
-void*
-TMheap_remove_s (TM_ARGDECL  heap_t* heapPtr)
-{
-	long size;
-	void* dataPtr;
-		size = (long)TM_SHARED_READ(heapPtr->size);
-		if (size >= 1) {
-			void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
-			dataPtr = (void*)TM_SHARED_READ_P(elements[1]);
-			TM_SHORT_WRITE(elements[1], TM_SHARED_READ_P(elements[size]));
-			TM_SHORT_WRITE(heapPtr->size, (size - 1));
-		}
-	if (size < 1) {
-		return NULL;
-	}
-
-    TMheapify_s(TM_ARG  heapPtr, 1);
-
-    return dataPtr;
-}
 
 /* =============================================================================
  * heap_isValid

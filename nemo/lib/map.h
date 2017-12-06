@@ -224,8 +224,6 @@
 
 #elif defined(MAP_USE_RBTREE)
 
-//we are using RB_Tree so this one has short tx friendly functions
-
 #  include "rbtree.h"
 
 #  define MAP_T                       rbtree_t
@@ -240,15 +238,10 @@
 
 #  define TMMAP_CONTAINS(map, key)    TMRBTREE_CONTAINS(map, (void*)(key))
 #  define TMMAP_FIND(map, key)        TMRBTREE_GET(map, (void*)(key))
-#  define TMMAP_FIND_P(map, key)        TMRBTREE_GET_P(map, (void*)(key))
 #  define TMMAP_INSERT(map, key, data) \
     TMRBTREE_INSERT(map, (void*)(key), (void*)(data))
 #  define TMMAP_REMOVE(map, key)      TMRBTREE_DELETE(map, (void*)(key))
 
-
-#  define TMMAP_INSERT_S(map, key, data) \
-    TMRBTREE_INSERT_S(map, (void*)(key), (void*)(data))
-#  define TMMAP_REMOVE_S(map, key)      TMRBTREE_DELETE_S(map, (void*)(key))
 
 #elif defined(MAP_USE_SKIPLIST)
 

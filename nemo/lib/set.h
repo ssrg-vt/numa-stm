@@ -92,9 +92,8 @@
 
 #  define TMSET_CONTAINS(map, key)    TMRBTREE_CONTAINS(map, (void*)(key))
 #  define TMSET_INSERT(map, key)      TMRBTREE_INSERT(map, (void*)(key), NULL)
-#  define TMSET_INSERT_S(map, key)      TMRBTREE_INSERT_S(map, (void*)(key), NULL)
 #  define TMSET_REMOVE(map, key)      TMRBTREE_DELETE(map, (void*)(key))
-#  define TMSET_REMOVE_S(map, key)      TMRBTREE_DELETE_S(map, (void*)(key))
+
 #else
 
 #  error "SET type is not specified"
