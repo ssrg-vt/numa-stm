@@ -180,9 +180,9 @@ parseArgs (long argc, char* const argv[])
 void
 processPackets (void* argPtr)
 {
-    TM_THREAD_ENTER();
-
     long threadId = thread_getId();
+    TM_THREAD_ENTER(threadId, 0, 0);
+
 
     stream_t*   streamPtr    = ((arg_t*)argPtr)->streamPtr;
     decoder_t*  decoderPtr   = ((arg_t*)argPtr)->decoderPtr;
@@ -197,11 +197,8 @@ processPackets (void* argPtr)
     while (1) {
 
         char* bytes;
-        TM_SHORT_BEGIN
-        bytes = TMSTREAM_GETPACKET_S(streamPtr);
-        TM_SHORT_END
-        TM_GL_BEGIN
-        bytes = TMSTREAM_GETPACKET_S(streamPtr);
+        TM_BEGIN();
+        bytes = TMSTREAM_GETPACKET(streamPtr);
         TM_END();
         if (!bytes) {
             break;
@@ -211,35 +208,24 @@ processPackets (void* argPtr)
         long flowId = packetPtr->flowId;
 
         error_t error;
-        TM_SHORT_BEGIN
-        error = TMDECODER_PROCESS_S(decoderPtr,
-								  bytes,
-								  (PACKET_HEADER_LENGTH + packetPtr->length));
-        TM_SHORT_END
-        TM_LONG_BEGIN
-
+        TM_BEGIN();
         error = TMDECODER_PROCESS(decoderPtr,
                                   bytes,
                                   (PACKET_HEADER_LENGTH + packetPtr->length));
-
         TM_END();
         if (error) {
             /*
              * Currently, stream_generate() does not create these errors.
              */
-//            assert(0);
+            assert(0);
             bool_t status = PVECTOR_PUSHBACK(errorVectorPtr, (void*)flowId);
-//            assert(status);
+            assert(status);
         }
 
         char* data;
         long decodedFlowId;
-
-        TM_SHORT_BEGIN
-        data = TMDECODER_GETCOMPLETE_S(decoderPtr, &decodedFlowId);
-        TM_SHORT_END
-        TM_GL_BEGIN
-        data = TMDECODER_GETCOMPLETE_S(decoderPtr, &decodedFlowId);
+        TM_BEGIN();
+        data = TMDECODER_GETCOMPLETE(decoderPtr, &decodedFlowId);
         TM_END();
         if (data) {
             error_t error = PDETECTOR_PROCESS(detectorPtr, data);
@@ -256,14 +242,6 @@ processPackets (void* argPtr)
     PDETECTOR_FREE(detectorPtr);
 
     TM_THREAD_EXIT();
-
-#ifdef STATISTICS
-    TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 
@@ -273,7 +251,6 @@ processPackets (void* argPtr)
  */
 MAIN(argc, argv)
 {
-//	RETRY_SHORT = 5;
 	/* 256 = ascii limit */
 	global_params[PARAM_ATTACK] = PARAM_DEFAULT_ATTACK;
 	global_params[PARAM_LENGTH] = PARAM_DEFAULT_LENGTH;

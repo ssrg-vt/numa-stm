@@ -296,11 +296,6 @@ TMstream_getPacket (TM_ARGDECL stream_t* streamPtr)
     return (char*)TMQUEUE_POP(streamPtr->packetQueuePtr);
 }
 
-char*
-TMstream_getPacket_s (TM_ARGDECL stream_t* streamPtr)
-{
-    return (char*)TMQUEUE_POP_S(streamPtr->packetQueuePtr);
-}
 
 /* =============================================================================
  * stream_isAttack

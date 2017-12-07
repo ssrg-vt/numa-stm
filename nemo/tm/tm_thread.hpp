@@ -16,9 +16,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <errno.h>
 #include <string.h>
-#include <errno.h>
 #include "rand_r_32.h"
 #include "WriteSet.hpp"
 #include "locktable.hpp"

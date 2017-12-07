@@ -109,8 +109,6 @@ decoder_process (decoder_t* decoderPtr, char* bytes, long numByte);
 error_t
 TMdecoder_process (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByte);
 
-error_t
-TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByte);
 
 /* =============================================================================
  * decoder_getComplete
@@ -130,14 +128,8 @@ char*
 TMdecoder_getComplete (TM_ARGDECL  decoder_t* decoderPtr, long* decodedFlowIdPtr);
 
 
-char*
-TMdecoder_getComplete_s (TM_ARGDECL  decoder_t* decoderPtr, long* decodedFlowIdPtr);
-
-
 #define TMDECODER_PROCESS(d, b, n)      TMdecoder_process(TM_ARG  d, b, n)
-#define TMDECODER_PROCESS_S(d, b, n)      TMdecoder_process_s(TM_ARG  d, b, n)
 #define TMDECODER_GETCOMPLETE(d, f)     TMdecoder_getComplete(TM_ARG  d, f)
-#define TMDECODER_GETCOMPLETE_S(d, f)     TMdecoder_getComplete_s(TM_ARG  d, f)
 
 
 #endif /* DECODER_H */

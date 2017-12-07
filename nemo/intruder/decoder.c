@@ -341,187 +341,6 @@ TMdecoder_process (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByte)
     if (numFragment > 1) {
 
         MAP_T* fragmentedMapPtr = decoderPtr->fragmentedMapPtr;
-
-        list_t* fragmentListPtr;
-        fragmentListPtr =
-            (list_t*)TMMAP_FIND(fragmentedMapPtr, (void*)flowId);
-
-        if (fragmentListPtr == NULL) {
-            fragmentListPtr = TMLIST_ALLOC(&packet_compareFragmentId);
-            assert(fragmentListPtr);
-        	TM_PART_BEGIN
-            status = TMLIST_INSERT(fragmentListPtr, (void*)packetPtr);
-            assert(status);
-            status = TMMAP_INSERT(fragmentedMapPtr,
-                                  (void*)flowId,
-                                  (void*)fragmentListPtr);
-//            assert(status);
-            TM_PART_END
-
-        } else {
-        	list_iter_t it;
-        	int fflagg = 0;
-        	TM_PART_BEGIN
-            TMLIST_ITER_RESET(&it, fragmentListPtr);
-            assert(TMLIST_ITER_HASNEXT(&it, fragmentListPtr));
-            packet_t* firstFragmentPtr =
-                (packet_t*)TMLIST_ITER_NEXT(&it, fragmentListPtr);
-            long expectedNumFragment = firstFragmentPtr->numFragment;
-
-            if (numFragment != expectedNumFragment) {
-                status = TMMAP_REMOVE(fragmentedMapPtr, (void*)flowId);
-                assert(status);
-                fflagg = 1;
-            }
-            TM_PART_END
-            if (fflagg)return ERROR_NUMFRAGMENT;
-
-            long list_size;
-
-            TM_PART_BEGIN
-            status = TMLIST_INSERT(fragmentListPtr, (void*)packetPtr);
-            assert(status);
-
-            list_size = TMLIST_GETSIZE(fragmentListPtr);
-            TM_PART_END
-            /*
-             * If we have all the fragments we can reassemble them
-             */
-
-            if (list_size == numFragment) {
-
-                long numByte = 0;
-                long i = 0;
-                int ret =0;
-                TM_PART_BEGIN
-                TMLIST_ITER_RESET(&it, fragmentListPtr);
-                while (TMLIST_ITER_HASNEXT(&it, fragmentListPtr)) {
-                    packet_t* fragmentPtr =
-                        (packet_t*)TMLIST_ITER_NEXT(&it, fragmentListPtr);
-                    assert(fragmentPtr->flowId == flowId);
-                    if (fragmentPtr->fragmentId != i) {
-                        status = TMMAP_REMOVE(fragmentedMapPtr, (void*)flowId);
-                        assert(status);
-//                        return ERROR_INCOMPLETE; /* should be sequential */
-                        ret = 1;
-                        break;
-                    }
-                    numByte += fragmentPtr->length;
-                    i++;
-                }
-                TM_PART_END
-                if (ret)
-                	return ERROR_INCOMPLETE; /* should be sequential */
-
-
-                char* data = (char*)TM_MALLOC(numByte + 1);
-                assert(data);
-                data[numByte] = '\0';
-                char* dst = data;
-                TMLIST_ITER_RESET(&it, fragmentListPtr);
-                while (TMLIST_ITER_HASNEXT(&it, fragmentListPtr)) {
-                    packet_t* fragmentPtr =
-                        (packet_t*)TMLIST_ITER_NEXT(&it, fragmentListPtr);
-                    memcpy(dst, fragmentPtr->data, fragmentPtr->length);
-                    dst += fragmentPtr->length;
-                }
-                assert(dst == data + numByte);
-                decoded_t* decodedPtr = (decoded_t*)TM_MALLOC(sizeof(decoded_t));
-                assert(decodedPtr);
-                decodedPtr->flowId = flowId;
-                decodedPtr->data = data;
-
-                TM_PART_BEGIN
-                queue_t* decodedQueuePtr = decoderPtr->decodedQueuePtr;
-                status = TMQUEUE_PUSH(decodedQueuePtr, (void*)decodedPtr);
-                assert(status);
-
-//                TMLIST_FREE(fragmentListPtr);
-                status = TMMAP_REMOVE(fragmentedMapPtr, (void*)flowId);
-                assert(status);
-                TM_PART_END
-            }
-
-
-        }
-
-    } else {
-
-        /*
-         * This is the only fragment, so it is ready
-         */
-
-        if (fragmentId != 0) {
-            return ERROR_FRAGMENTID;
-        }
-
-        char* data = (char*)TM_MALLOC(length + 1);
-        assert(data);
-        data[length] = '\0';
-        memcpy(data, packetPtr->data, length);
-
-        decoded_t* decodedPtr = (decoded_t*)TM_MALLOC(sizeof(decoded_t));
-        assert(decodedPtr);
-        decodedPtr->flowId = flowId;
-        decodedPtr->data = data;
-        TM_PART_BEGIN
-        queue_t* decodedQueuePtr = decoderPtr->decodedQueuePtr;
-        status = TMQUEUE_PUSH(decodedQueuePtr, (void*)decodedPtr);
-        assert(status);
-        TM_PART_END
-
-    }
-
-    return ERROR_NONE;
-}
-
-error_t
-TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByte)
-{
-    bool_t status;
-
-    /*
-     * Basic error checking
-     */
-
-    if (numByte < PACKET_HEADER_LENGTH) {
-        return ERROR_SHORT;
-    }
-
-    packet_t* packetPtr = (packet_t*)bytes;
-    long flowId      = packetPtr->flowId;
-    long fragmentId  = packetPtr->fragmentId;
-    long numFragment = packetPtr->numFragment;
-    long length      = packetPtr->length;
-
-    if (flowId < 0) {
-        return ERROR_FLOWID;
-    }
-
-    if ((fragmentId < 0) || (fragmentId >= numFragment)) {
-        return ERROR_FRAGMENTID;
-    }
-
-    if (length < 0) {
-        return ERROR_LENGTH;
-    }
-
-#if 0
-    /*
-     * With the above checks, this one is redundant
-     */
-    if (numFragment < 1) {
-        return ERROR_NUMFRAGMENT;
-    }
-#endif
-
-    /*
-     * Add to fragmented map for reassembling
-     */
-
-    if (numFragment > 1) {
-
-        MAP_T* fragmentedMapPtr = decoderPtr->fragmentedMapPtr;
         list_t* fragmentListPtr =
             (list_t*)TMMAP_FIND(fragmentedMapPtr, (void*)flowId);
 
@@ -529,9 +348,9 @@ TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByt
 
             fragmentListPtr = TMLIST_ALLOC(&packet_compareFragmentId);
             assert(fragmentListPtr);
-            status = TMLIST_INSERT_S(fragmentListPtr, (void*)packetPtr);
+            status = TMLIST_INSERT(fragmentListPtr, (void*)packetPtr);
             assert(status);
-            status = TMMAP_INSERT_S(fragmentedMapPtr,
+            status = TMMAP_INSERT(fragmentedMapPtr,
                                   (void*)flowId,
                                   (void*)fragmentListPtr);
             assert(status);
@@ -546,12 +365,12 @@ TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByt
             long expectedNumFragment = firstFragmentPtr->numFragment;
 
             if (numFragment != expectedNumFragment) {
-                status = TMMAP_REMOVE_S(fragmentedMapPtr, (void*)flowId);
+                status = TMMAP_REMOVE(fragmentedMapPtr, (void*)flowId);
                 assert(status);
                 return ERROR_NUMFRAGMENT;
             }
 
-            status = TMLIST_INSERT_S(fragmentListPtr, (void*)packetPtr);
+            status = TMLIST_INSERT(fragmentListPtr, (void*)packetPtr);
             assert(status);
 
             /*
@@ -568,7 +387,7 @@ TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByt
                         (packet_t*)TMLIST_ITER_NEXT(&it, fragmentListPtr);
                     assert(fragmentPtr->flowId == flowId);
                     if (fragmentPtr->fragmentId != i) {
-                        status = TMMAP_REMOVE_S(fragmentedMapPtr, (void*)flowId);
+                        status = TMMAP_REMOVE(fragmentedMapPtr, (void*)flowId);
                         assert(status);
                         return ERROR_INCOMPLETE; /* should be sequential */
                     }
@@ -595,11 +414,11 @@ TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByt
                 decodedPtr->data = data;
 
                 queue_t* decodedQueuePtr = decoderPtr->decodedQueuePtr;
-                status = TMQUEUE_PUSH_S(decodedQueuePtr, (void*)decodedPtr);
+                status = TMQUEUE_PUSH(decodedQueuePtr, (void*)decodedPtr);
                 assert(status);
 
                 TMLIST_FREE(fragmentListPtr);
-                status = TMMAP_REMOVE_S(fragmentedMapPtr, (void*)flowId);
+                status = TMMAP_REMOVE(fragmentedMapPtr, (void*)flowId);
                 assert(status);
             }
 
@@ -633,6 +452,7 @@ TMdecoder_process_s (TM_ARGDECL  decoder_t* decoderPtr, char* bytes, long numByt
 
     return ERROR_NONE;
 }
+
 
 /* =============================================================================
  * decoder_getComplete
@@ -667,28 +487,7 @@ char*
 TMdecoder_getComplete (TM_ARGDECL  decoder_t* decoderPtr, long* decodedFlowIdPtr)
 {
     char* data;
-    decoded_t* decodedPtr;
-    TM_PART_BEGIN
-    decodedPtr = TMQUEUE_POP(decoderPtr->decodedQueuePtr);
-    TM_PART_END
-    if (decodedPtr) {
-        *decodedFlowIdPtr = decodedPtr->flowId;
-        data = decodedPtr->data;
-        TM_FREE(decodedPtr);
-    } else {
-        *decodedFlowIdPtr = -1;
-        data = NULL;
-    }
-
-    return data;
-}
-
-
-char*
-TMdecoder_getComplete_s (TM_ARGDECL  decoder_t* decoderPtr, long* decodedFlowIdPtr)
-{
-    char* data;
-    decoded_t* decodedPtr = TMQUEUE_POP_S(decoderPtr->decodedQueuePtr);
+    decoded_t* decodedPtr = TMQUEUE_POP(decoderPtr->decodedQueuePtr);
 
     if (decodedPtr) {
         *decodedFlowIdPtr = decodedPtr->flowId;
@@ -701,6 +500,7 @@ TMdecoder_getComplete_s (TM_ARGDECL  decoder_t* decoderPtr, long* decodedFlowIdP
 
     return data;
 }
+
 
 /* #############################################################################
  * TEST_DECODER

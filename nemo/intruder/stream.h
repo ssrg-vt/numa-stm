@@ -124,8 +124,6 @@ stream_getPacket (stream_t* streamPtr);
 char*
 TMstream_getPacket (TM_ARGDECL stream_t* streamPtr);
 
-char*
-TMstream_getPacket_s (TM_ARGDECL stream_t* streamPtr);
 
 /* =============================================================================
  * stream_isAttack
@@ -136,7 +134,6 @@ stream_isAttack (stream_t* streamPtr, long flowId);
 
 
 #define TMSTREAM_GETPACKET(s)           TMstream_getPacket(TM_ARG  s)
-#define TMSTREAM_GETPACKET_S(s)         TMstream_getPacket_s(TM_ARG  s)
 
 #endif /* STREAM_H */
 

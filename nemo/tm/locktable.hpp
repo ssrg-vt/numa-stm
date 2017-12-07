@@ -7,7 +7,6 @@
 #include <numaif.h>
 #include <numa.h>
 #include <stdint.h>
-#include <errno.h>
 #include <stdio.h>
 #include <sched.h>
 
