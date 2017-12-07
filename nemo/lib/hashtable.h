@@ -105,7 +105,7 @@ typedef struct hashtable {
     list_t** buckets;
     long numBucket;
 #ifdef HASHTABLE_SIZE_FIELD
-    long size;
+    tm_obj<long> size;
 #endif
     ulong_t (*hash)(const void*);
     long (*comparePairs)(const pair_t*, const pair_t*);

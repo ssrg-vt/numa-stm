@@ -81,8 +81,8 @@ typedef struct grid {
     long width;
     long height;
     long depth;
-    long* points;
-    long* points_unaligned;
+    tm_obj<long>* points;
+    tm_obj<long>* points_unaligned;
 } grid_t;
 
 //enum {
@@ -143,7 +143,7 @@ grid_isPointValid (grid_t* gridPtr, long x, long y, long z);
  * grid_getPointRef
  * =============================================================================
  */
-long*
+tm_obj<long>*
 grid_getPointRef (grid_t* gridPtr, long x, long y, long z);
 
 
@@ -153,7 +153,7 @@ grid_getPointRef (grid_t* gridPtr, long x, long y, long z);
  */
 void
 grid_getPointIndices (grid_t* gridPtr,
-                      long* gridPointPtr, long* xPtr, long* yPtr, long* zPtr);
+		tm_obj<long>* gridPointPtr, long* xPtr, long* yPtr, long* zPtr);
 
 
 /* =============================================================================
@@ -204,9 +204,7 @@ TM_CALLABLE
 void
 TMgrid_addPath (TM_ARGDECL  grid_t* gridPtr, vector_t* pointVectorPtr);
 
-TM_CALLABLE
-void
-TMgrid_addPath_s (TM_ARGDECL  grid_t* gridPtr, vector_t* pointVectorPtr);
+
 /* =============================================================================
  * grid_print
  * =============================================================================
@@ -219,7 +217,7 @@ grid_print (grid_t* gridPtr);
 #define PGRID_FREE(g)                   Pgrid_free(g)
 
 #define TMGRID_ADDPATH(g, p)            TMgrid_addPath(TM_ARG  g, p)
-#define TMGRID_ADDPATH_S(g, p)            TMgrid_addPath_s(TM_ARG  g, p)
+
 
 #endif /* GRID_H */
 

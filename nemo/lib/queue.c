@@ -79,10 +79,10 @@
 
 
 struct queue {
-    long pop; /* points before element to pop */
-    long push;
-    long capacity;
-    void** elements;
+	tm_obj<long> pop; /* points before element to pop */
+	tm_obj<long> push;
+	tm_obj<long> capacity;
+    tm_obj<tm_obj<void*>*> elements;
 };
 
 enum config {
@@ -101,14 +101,32 @@ queue_alloc (long initCapacity)
 
     if (queuePtr) {
         long capacity = ((initCapacity < 2) ? 2 : initCapacity);
-        queuePtr->elements = (void**)malloc(capacity * sizeof(void*));
-        if (queuePtr->elements == NULL) {
+        queuePtr->elements.val = (tm_obj<void*>*)malloc(capacity * sizeof(tm_obj<void*>));
+        if (queuePtr->elements.val == NULL) {
             free(queuePtr);
             return NULL;
         }
-        queuePtr->pop      = capacity - 1;
-        queuePtr->push     = 0;
-        queuePtr->capacity = capacity;
+        queuePtr->elements.lock_p = &(queuePtr->elements.lock);
+        queuePtr->elements.lock = 0;
+        queuePtr->elements.ver = 0;
+
+        memset(queuePtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < capacity; i++) {
+        	queuePtr->elements.val[i].lock_p = &(queuePtr->elements.val[i].lock);
+        }
+
+        queuePtr->pop.val      = capacity - 1;
+        queuePtr->pop.lock_p = &(queuePtr->pop.lock);
+        queuePtr->pop.lock = 0;
+        queuePtr->pop.ver = 0;
+        queuePtr->push.val     = 0;
+        queuePtr->push.lock_p = &(queuePtr->pop.lock);
+        queuePtr->push.lock = 0;
+        queuePtr->push.ver = 0;
+        queuePtr->capacity.val = capacity;
+        queuePtr->capacity.lock_p = &(queuePtr->pop.lock);
+        queuePtr->capacity.lock = 0;
+        queuePtr->capacity.ver = 0;
     }
 
     return queuePtr;
@@ -124,16 +142,35 @@ Pqueue_alloc (long initCapacity)
 {
     queue_t* queuePtr = (queue_t*)P_MALLOC(sizeof(queue_t));
 
+
     if (queuePtr) {
         long capacity = ((initCapacity < 2) ? 2 : initCapacity);
-        queuePtr->elements = (void**)P_MALLOC(capacity * sizeof(void*));
-        if (queuePtr->elements == NULL) {
+        queuePtr->elements.val = (tm_obj<void*>*)P_MALLOC(capacity * sizeof(tm_obj<void*>));
+        if (queuePtr->elements.val == NULL) {
             free(queuePtr);
             return NULL;
         }
-        queuePtr->pop      = capacity - 1;
-        queuePtr->push     = 0;
-        queuePtr->capacity = capacity;
+        queuePtr->elements.lock_p = &(queuePtr->elements.lock);
+        queuePtr->elements.lock = 0;
+        queuePtr->elements.ver = 0;
+        memset(queuePtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < capacity; i++) {
+        	queuePtr->elements.val[i].lock_p = &(queuePtr->elements.val[i].lock);
+        }
+
+
+        queuePtr->pop.val      = capacity - 1;
+        queuePtr->pop.lock_p = &(queuePtr->pop.lock);
+        queuePtr->pop.lock = 0;
+        queuePtr->pop.ver = 0;
+        queuePtr->push.val     = 0;
+        queuePtr->push.lock_p = &(queuePtr->pop.lock);
+        queuePtr->push.lock = 0;
+        queuePtr->push.ver = 0;
+        queuePtr->capacity.val = capacity;
+        queuePtr->capacity.lock_p = &(queuePtr->pop.lock);
+        queuePtr->capacity.lock = 0;
+        queuePtr->capacity.ver = 0;
     }
 
     return queuePtr;
@@ -151,14 +188,31 @@ TMqueue_alloc (TM_ARGDECL  long initCapacity)
 
     if (queuePtr) {
         long capacity = ((initCapacity < 2) ? 2 : initCapacity);
-        queuePtr->elements = (void**)TM_MALLOC(capacity * sizeof(void*));
-        if (queuePtr->elements == NULL) {
+        queuePtr->elements.val = (tm_obj<void*>*)TM_MALLOC(capacity * sizeof(tm_obj<void*>));
+        if (queuePtr->elements.val == NULL) {
             free(queuePtr);
             return NULL;
         }
-        queuePtr->pop      = capacity - 1;
-        queuePtr->push     = 0;
-        queuePtr->capacity = capacity;
+        queuePtr->elements.lock_p = &(queuePtr->elements.lock);
+        queuePtr->elements.lock = 0;
+        queuePtr->elements.ver = 0;
+        memset(queuePtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < capacity; i++) {
+        	queuePtr->elements.val[i].lock_p = &(queuePtr->elements.val[i].lock);
+        }
+
+        queuePtr->pop.val      = capacity - 1;
+        queuePtr->pop.lock_p = &(queuePtr->pop.lock);
+        queuePtr->pop.lock = 0;
+        queuePtr->pop.ver = 0;
+        queuePtr->push.val     = 0;
+        queuePtr->push.lock_p = &(queuePtr->pop.lock);
+        queuePtr->push.lock = 0;
+        queuePtr->push.ver = 0;
+        queuePtr->capacity.val = capacity;
+        queuePtr->capacity.lock_p = &(queuePtr->pop.lock);
+        queuePtr->capacity.lock = 0;
+        queuePtr->capacity.ver = 0;
     }
 
     return queuePtr;
@@ -172,7 +226,7 @@ TMqueue_alloc (TM_ARGDECL  long initCapacity)
 void
 queue_free (queue_t* queuePtr)
 {
-    free(queuePtr->elements);
+    free(queuePtr->elements.val);
     free(queuePtr);
 }
 
@@ -196,7 +250,7 @@ Pqueue_free (queue_t* queuePtr)
 void
 TMqueue_free (TM_ARGDECL  queue_t* queuePtr)
 {
-    TM_FREE((void**)TM_SHARED_READ_P(queuePtr->elements));
+    TM_FREE((tm_obj<void*>*)TM_SHARED_READ_P(queuePtr->elements));
     TM_FREE(queuePtr);
 }
 
@@ -208,9 +262,9 @@ TMqueue_free (TM_ARGDECL  queue_t* queuePtr)
 bool_t
 queue_isEmpty (queue_t* queuePtr)
 {
-    long pop      = queuePtr->pop;
-    long push     = queuePtr->push;
-    long capacity = queuePtr->capacity;
+    long pop      = queuePtr->pop.val;
+    long push     = queuePtr->push.val;
+    long capacity = queuePtr->capacity.val;
 
     return (((pop + 1) % capacity == push) ? TRUE : FALSE);
 }
@@ -223,8 +277,8 @@ queue_isEmpty (queue_t* queuePtr)
 void
 queue_clear (queue_t* queuePtr)
 {
-    queuePtr->pop  = queuePtr->capacity - 1;
-    queuePtr->push = 0;
+    queuePtr->pop.val  = queuePtr->capacity.val - 1;
+    queuePtr->push.val = 0;
 }
 
 
@@ -250,9 +304,9 @@ TMqueue_isEmpty (TM_ARGDECL  queue_t* queuePtr)
 void
 queue_shuffle (queue_t* queuePtr, random_t* randomPtr)
 {
-    long pop      = queuePtr->pop;
-    long push     = queuePtr->push;
-    long capacity = queuePtr->capacity;
+    long pop      = queuePtr->pop.val;
+    long push     = queuePtr->push.val;
+    long capacity = queuePtr->capacity.val;
 
     long numElement;
     if (pop < push) {
@@ -261,7 +315,7 @@ queue_shuffle (queue_t* queuePtr, random_t* randomPtr)
         numElement = capacity - (pop - push + 1);
     }
 
-    void** elements = queuePtr->elements;
+    tm_obj<void*>* elements = queuePtr->elements.val;
     long i;
     long base = pop + 1;
     for (i = 0; i < numElement; i++) {
@@ -269,9 +323,9 @@ queue_shuffle (queue_t* queuePtr, random_t* randomPtr)
         long r2 = random_generate(randomPtr) % numElement;
         long i1 = (base + r1) % capacity;
         long i2 = (base + r2) % capacity;
-        void* tmp = elements[i1];
-        elements[i1] = elements[i2];
-        elements[i2] = tmp;
+        void* tmp = elements[i1].val;
+        elements[i1].val = elements[i2].val;
+        elements[i2].val = tmp;
     }
 }
 
@@ -283,9 +337,9 @@ queue_shuffle (queue_t* queuePtr, random_t* randomPtr)
 bool_t
 queue_push (queue_t* queuePtr, void* dataPtr)
 {
-    long pop      = queuePtr->pop;
-    long push     = queuePtr->push;
-    long capacity = queuePtr->capacity;
+    long pop      = queuePtr->pop.val;
+    long push     = queuePtr->push.val;
+    long capacity = queuePtr->capacity.val;
 
     assert(pop != push);
 
@@ -294,38 +348,43 @@ queue_push (queue_t* queuePtr, void* dataPtr)
     if (newPush == pop) {
 
         long newCapacity = capacity * QUEUE_GROWTH_FACTOR;
-        void** newElements = (void**)malloc(newCapacity * sizeof(void*));
+        tm_obj<void*>* newElements = (tm_obj<void*>*)malloc(newCapacity * sizeof(tm_obj<void*>));
         if (newElements == NULL) {
             return FALSE;
         }
+        memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < newCapacity; i++) {
+        	newElements[i].lock_p = &(newElements[i].lock);
+        }
+
 
         long dst = 0;
-        void** elements = queuePtr->elements;
+        tm_obj<void*>* elements = queuePtr->elements.val;
         if (pop < push) {
             long src;
             for (src = (pop + 1); src < push; src++, dst++) {
-                newElements[dst] = elements[src];
+                newElements[dst].val = elements[src].val;
             }
         } else {
             long src;
             for (src = (pop + 1); src < capacity; src++, dst++) {
-                newElements[dst] = elements[src];
+                newElements[dst].val = elements[src].val;
             }
             for (src = 0; src < push; src++, dst++) {
-                newElements[dst] = elements[src];
+                newElements[dst].val = elements[src].val;
             }
         }
 
         free(elements);
-        queuePtr->elements = newElements;
-        queuePtr->pop      = newCapacity - 1;
-        queuePtr->capacity = newCapacity;
+        queuePtr->elements.val = newElements;
+        queuePtr->pop.val      = newCapacity - 1;
+        queuePtr->capacity.val = newCapacity;
         push = dst;
         newPush = push + 1; /* no need modulo */
     }
 
-    queuePtr->elements[push] = dataPtr;
-    queuePtr->push = newPush;
+    queuePtr->elements.val[push].val = dataPtr;
+    queuePtr->push.val = newPush;
 
     return TRUE;
 }
@@ -338,9 +397,9 @@ queue_push (queue_t* queuePtr, void* dataPtr)
 bool_t
 Pqueue_push (queue_t* queuePtr, void* dataPtr)
 {
-    long pop      = queuePtr->pop;
-    long push     = queuePtr->push;
-    long capacity = queuePtr->capacity;
+    long pop      = queuePtr->pop.val;
+    long push     = queuePtr->push.val;
+    long capacity = queuePtr->capacity.val;
 
     assert(pop != push);
 
@@ -349,39 +408,43 @@ Pqueue_push (queue_t* queuePtr, void* dataPtr)
     if (newPush == pop) {
 
         long newCapacity = capacity * QUEUE_GROWTH_FACTOR;
-        void** newElements = (void**)P_MALLOC(newCapacity * sizeof(void*));
+        tm_obj<void*>* newElements = (tm_obj<void*>*)P_MALLOC(newCapacity * sizeof(tm_obj<void*>));
         if (newElements == NULL) {
             return FALSE;
         }
+        memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < newCapacity; i++) {
+        	newElements[i].lock_p = &(newElements[i].lock);
+        }
+
 
         long dst = 0;
-        void** elements = queuePtr->elements;
+        tm_obj<void*>* elements = queuePtr->elements.val;
         if (pop < push) {
             long src;
             for (src = (pop + 1); src < push; src++, dst++) {
-                newElements[dst] = elements[src];
+                newElements[dst].val = elements[src].val;
             }
         } else {
             long src;
             for (src = (pop + 1); src < capacity; src++, dst++) {
-                newElements[dst] = elements[src];
+                newElements[dst].val = elements[src].val;
             }
             for (src = 0; src < push; src++, dst++) {
-                newElements[dst] = elements[src];
+                newElements[dst].val = elements[src].val;
             }
         }
 
         P_FREE(elements);
-        queuePtr->elements = newElements;
-        queuePtr->pop      = newCapacity - 1;
-        queuePtr->capacity = newCapacity;
+        queuePtr->elements.val = newElements;
+        queuePtr->pop.val      = newCapacity - 1;
+        queuePtr->capacity.val = newCapacity;
         push = dst;
         newPush = push + 1; /* no need modulo */
-
     }
 
-    queuePtr->elements[push] = dataPtr;
-    queuePtr->push = newPush;
+    queuePtr->elements.val[push].val = dataPtr;
+    queuePtr->push.val = newPush;
 
     return TRUE;
 }
@@ -404,25 +467,29 @@ TMqueue_push (TM_ARGDECL  queue_t* queuePtr, void* dataPtr)
     long newPush = (push + 1) % capacity;
     if (newPush == pop) {
         long newCapacity = capacity * QUEUE_GROWTH_FACTOR;
-        void** newElements = (void**)TM_MALLOC(newCapacity * sizeof(void*));
+        tm_obj<void*>* newElements = (tm_obj<void*>*)TM_MALLOC(newCapacity * sizeof(tm_obj<void*>));
         if (newElements == NULL) {
             return FALSE;
         }
+        memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < newCapacity; i++) {
+        	newElements[i].lock_p = &(newElements[i].lock);
+        }
 
         long dst = 0;
-        void** elements = (void**)TM_SHARED_READ_P(queuePtr->elements);
+        tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(queuePtr->elements);
         if (pop < push) {
             long src;
             for (src = (pop + 1); src < push; src++, dst++) {
-                newElements[dst] = (void*)TM_SHARED_READ_P(elements[src]);
+                newElements[dst].val = (void*)TM_SHARED_READ_P(elements[src]);
             }
         } else {
             long src;
             for (src = (pop + 1); src < capacity; src++, dst++) {
-                newElements[dst] = (void*)TM_SHARED_READ_P(elements[src]);
+                newElements[dst].val = (void*)TM_SHARED_READ_P(elements[src]);
             }
             for (src = 0; src < push; src++, dst++) {
-                newElements[dst] = (void*)TM_SHARED_READ_P(elements[src]);
+                newElements[dst].val = (void*)TM_SHARED_READ_P(elements[src]);
             }
         }
 
@@ -435,7 +502,7 @@ TMqueue_push (TM_ARGDECL  queue_t* queuePtr, void* dataPtr)
 
     }
 
-    void** elements = (void**)TM_SHARED_READ_P(queuePtr->elements);
+    tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(queuePtr->elements);
     TM_SHARED_WRITE_P(elements[push], dataPtr);
     TM_SHARED_WRITE(queuePtr->push, newPush);
 
@@ -450,17 +517,17 @@ TMqueue_push (TM_ARGDECL  queue_t* queuePtr, void* dataPtr)
 void*
 queue_pop (queue_t* queuePtr)
 {
-    long pop      = queuePtr->pop;
-    long push     = queuePtr->push;
-    long capacity = queuePtr->capacity;
+    long pop      = queuePtr->pop.val;
+    long push     = queuePtr->push.val;
+    long capacity = queuePtr->capacity.val;
 
     long newPop = (pop + 1) % capacity;
     if (newPop == push) {
         return NULL;
     }
 
-    void* dataPtr = queuePtr->elements[newPop];
-    queuePtr->pop = newPop;
+    void* dataPtr = queuePtr->elements.val[newPop].val;
+    queuePtr->pop.val = newPop;
 
     return dataPtr;
 }
@@ -482,7 +549,7 @@ TMqueue_pop (TM_ARGDECL  queue_t* queuePtr)
         return NULL;
     }
 
-    void** elements = (void**)TM_SHARED_READ_P(queuePtr->elements);
+    tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(queuePtr->elements);
     void* dataPtr = (void*)TM_SHARED_READ_P(elements[newPop]);
     TM_SHARED_WRITE(queuePtr->pop, newPop);
 

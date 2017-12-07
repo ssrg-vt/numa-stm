@@ -221,7 +221,7 @@ maze_read (maze_t* mazePtr, char* inputFileName)
                 pair_t* coordinatePairPtr = pair_alloc(srcPtr, dstPtr);
                 assert(coordinatePairPtr);
                 bool_t status = list_insert(workListPtr, (void*)coordinatePairPtr);
-//                assert(status == TRUE);
+                assert(status == TRUE);
                 vector_pushBack(srcVectorPtr, (void*)srcPtr);
                 vector_pushBack(dstVectorPtr, (void*)dstPtr);
                 break;
@@ -322,7 +322,7 @@ maze_checkPaths (maze_t* mazePtr, list_t* pathVectorListPtr, bool_t doPrintPaths
             id++;
             vector_t* pointVectorPtr = (vector_t*)vector_at(pathVectorPtr, i);
             /* Check start */
-            long* prevGridPointPtr = (long*)vector_at(pointVectorPtr, 0);
+            tm_obj<long>* prevGridPointPtr = (tm_obj<long>*)vector_at(pointVectorPtr, 0);
             long x;
             long y;
             long z;
@@ -340,7 +340,7 @@ maze_checkPaths (maze_t* mazePtr, list_t* pathVectorListPtr, bool_t doPrintPaths
             long numPoint = vector_getSize(pointVectorPtr);
             long j;
             for (j = 1; j < (numPoint-1); j++) { /* no need to check endpoints */
-                long* currGridPointPtr = (long*)vector_at(pointVectorPtr, j);
+            	tm_obj<long>* currGridPointPtr = (tm_obj<long>*)vector_at(pointVectorPtr, j);
                 coordinate_t currCoordinate;
                 grid_getPointIndices(gridPtr,
                                      currGridPointPtr,
@@ -363,7 +363,7 @@ maze_checkPaths (maze_t* mazePtr, list_t* pathVectorListPtr, bool_t doPrintPaths
                 }
             }
             /* Check end */
-            long* lastGridPointPtr = (long*)vector_at(pointVectorPtr, j);
+            tm_obj<long>* lastGridPointPtr = (tm_obj<long>*)vector_at(pointVectorPtr, j);
             grid_getPointIndices(gridPtr, lastGridPointPtr, &x, &y, &z);
             if (grid_getPoint(testGridPtr, x, y, z) != 0) {
                 grid_free(testGridPtr);

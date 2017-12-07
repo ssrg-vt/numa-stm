@@ -146,15 +146,15 @@ PexpandToNeighbor (grid_t* myGridPtr,
                    long x, long y, long z, long value, queue_t* queuePtr)
 {
     if (grid_isPointValid(myGridPtr, x, y, z)) {
-        long* neighborGridPointPtr = grid_getPointRef(myGridPtr, x, y, z);
-        long neighborValue = *neighborGridPointPtr;
+        tm_obj<long>* neighborGridPointPtr = grid_getPointRef(myGridPtr, x, y, z);
+        long neighborValue = neighborGridPointPtr->val;
         if (neighborValue == GRID_POINT_EMPTY) {
-            (*neighborGridPointPtr) = value;
+            neighborGridPointPtr->val = value;
             PQUEUE_PUSH(queuePtr, (void*)neighborGridPointPtr);
         } else if (neighborValue != GRID_POINT_FULL) {
             /* We have expanded here before... is this new path better? */
             if (value < neighborValue) {
-                (*neighborGridPointPtr) = value;
+                neighborGridPointPtr->val = value;
                 PQUEUE_PUSH(queuePtr, (void*)neighborGridPointPtr);
             }
         }
@@ -180,18 +180,18 @@ PdoExpansion (router_t* routerPtr, grid_t* myGridPtr, queue_t* queuePtr,
      */
 
     PQUEUE_CLEAR(queuePtr);
-    long* srcGridPointPtr =
+    tm_obj<long>* srcGridPointPtr =
         grid_getPointRef(myGridPtr, srcPtr->x, srcPtr->y, srcPtr->z);
     PQUEUE_PUSH(queuePtr, (void*)srcGridPointPtr);
     grid_setPoint(myGridPtr, srcPtr->x, srcPtr->y, srcPtr->z, 0);
     grid_setPoint(myGridPtr, dstPtr->x, dstPtr->y, dstPtr->z, GRID_POINT_EMPTY);
-    long* dstGridPointPtr =
+    tm_obj<long>* dstGridPointPtr =
         grid_getPointRef(myGridPtr, dstPtr->x, dstPtr->y, dstPtr->z);
     bool_t isPathFound = FALSE;
 
     while (!PQUEUE_ISEMPTY(queuePtr)) {
 
-        long* gridPointPtr = (long*)PQUEUE_POP(queuePtr);
+    	tm_obj<long>* gridPointPtr = (tm_obj<long>*)PQUEUE_POP(queuePtr);
         if (gridPointPtr == dstGridPointPtr) {
             isPathFound = TRUE;
             break;
@@ -201,7 +201,7 @@ PdoExpansion (router_t* routerPtr, grid_t* myGridPtr, queue_t* queuePtr,
         long y;
         long z;
         grid_getPointIndices(myGridPtr, gridPointPtr, &x, &y, &z);
-        long value = (*gridPointPtr);
+        long value = gridPointPtr->val;
 
         /*
          * Check 6 neighbors
@@ -284,7 +284,7 @@ PdoTraceback (grid_t* gridPtr, grid_t* myGridPtr,
 
     while (1) {
 
-        long* gridPointPtr = grid_getPointRef(gridPtr, next.x, next.y, next.z);
+    	tm_obj<long>* gridPointPtr = grid_getPointRef(gridPtr, next.x, next.y, next.z);
         PVECTOR_PUSHBACK(pointVectorPtr, (void*)gridPointPtr);
         grid_setPoint(myGridPtr, next.x, next.y, next.z, GRID_POINT_FULL);
 
@@ -353,7 +353,9 @@ PdoTraceback (grid_t* gridPtr, grid_t* myGridPtr,
 void
 router_solve (void* argPtr)
 {
-    TM_THREAD_ENTER();
+	long myId = thread_getId();
+
+	TM_THREAD_ENTER(myId, 0, 0);
 
     router_solve_arg_t* routerArgPtr = (router_solve_arg_t*)argPtr;
     router_t* routerPtr = routerArgPtr->routerPtr;
@@ -376,34 +378,13 @@ router_solve (void* argPtr)
     while (1) {
 
         pair_t* coordinatePairPtr;
-        TM_SHORT_BEGIN
-			if (TMQUEUE_ISEMPTY(workQueuePtr)) {
-				coordinatePairPtr = NULL;
-			} else {
-				coordinatePairPtr = (pair_t*)TMQUEUE_POP_S(workQueuePtr);
-			}
-        TM_SHORT_END
-        TM_LONG_BEGIN
-        TM_PART_BEGIN
-			if (TMQUEUE_ISEMPTY(workQueuePtr)) {
-				coordinatePairPtr = NULL;
-			} else {
-				coordinatePairPtr = (pair_t*)TMQUEUE_POP(workQueuePtr);
-			}
-        TM_PART_END
-        TM_END();
-/*
-        lab_lbl1:
-        if (lab_lbl1_b) {
-			if (PQUEUE_ISEMPTY(workQueuePtr)) {
-				coordinatePairPtr = NULL;
-			} else {
-				coordinatePairPtr = (pair_t*)PQUEUE_POP(workQueuePtr);
-			}
-			lab_lbl1_b = 0;
-			SUPER_GL_UNLOCK_EXT
+        TM_BEGIN();
+        if (TMQUEUE_ISEMPTY(workQueuePtr)) {
+            coordinatePairPtr = NULL;
+        } else {
+            coordinatePairPtr = (pair_t*)TMQUEUE_POP(workQueuePtr);
         }
-*/
+        TM_END();
         if (coordinatePairPtr == NULL) {
             break;
         }
@@ -414,78 +395,22 @@ router_solve (void* argPtr)
         bool_t success = FALSE;
         vector_t* pointVectorPtr = NULL;
 
-//        int lab_lbl2_b=0;
-//        TM_BEGIN(lab_lbl2);
-//
-//        grid_copy(myGridPtr, gridPtr); /* ok if not most up-to-date */
-//        if (PdoExpansion(routerPtr, myGridPtr, myExpansionQueuePtr,
-//                         srcPtr, dstPtr)) {
-//            pointVectorPtr = PdoTraceback(gridPtr, myGridPtr, dstPtr, bendCost);
-//            /*
-//             * TODO: fix memory leak
-//             *
-//             * pointVectorPtr will be a memory leak if we abort this transaction
-//             */
-//            if (pointVectorPtr) {
-//                TMGRID_ADDPATH(gridPtr, pointVectorPtr);
-//                TM_LOCAL_WRITE(success, TRUE);
-//            }
-//        }
-//        TM_END();
-//        lab_lbl2:
-//        if (lab_lbl2_b) {
-//        	grid_copy(myGridPtr, gridPtr); /* ok if not most up-to-date */
-//			if (PdoExpansion(routerPtr, myGridPtr, myExpansionQueuePtr,
-//							 srcPtr, dstPtr)) {
-//				pointVectorPtr = PdoTraceback(gridPtr, myGridPtr, dstPtr, bendCost);
-//				/*
-//				 * TODO: fix memory leak
-//				 *
-//				 * pointVectorPtr will be a memory leak if we abort this transaction
-//				 */
-//				if (pointVectorPtr) {
-//					grid_addPath(gridPtr, pointVectorPtr);
-//					TM_LOCAL_WRITE(success, TRUE);
-//				}
-//			}
-//			lab_lbl2_b=0;
-//			SUPER_GL_UNLOCK_EXT
-//        }
-
-//       int lab_lbl2_b=0;
-
-
-	   grid_copy(myGridPtr, gridPtr); /* ok if not most up-to-date */
-	   if (PdoExpansion(routerPtr, myGridPtr, myExpansionQueuePtr,
-						srcPtr, dstPtr)) {
-		   pointVectorPtr = PdoTraceback(gridPtr, myGridPtr, dstPtr, bendCost);
-		   /*
-			* TODO: fix memory leak
-			*
-			* pointVectorPtr will be a memory leak if we abort this transaction
-			*/
-		   if (pointVectorPtr) {
-
-			   TM_SHORT_BEGIN
-				   TMGRID_ADDPATH_S(gridPtr, pointVectorPtr);
-				   TM_LOCAL_WRITE(success, TRUE);
-			   TM_SHORT_END
-//			   TM_LONG_BEGIN
-//			   TM_BEGIN(1) //(lab_lbl2);
-			   TM_GL_BEGIN
-				   TMGRID_ADDPATH(gridPtr, pointVectorPtr);
-				   TM_LOCAL_WRITE(success, TRUE);
-			   TM_END();
-			 /*  lab_lbl2:
-			   if (lab_lbl2_b) {
-					grid_addPath(gridPtr, pointVectorPtr);
-					TM_LOCAL_WRITE(success, TRUE);
-					lab_lbl2_b=0;
-					SUPER_GL_UNLOCK_EXT
-			   }*/
-		   }
-	   }
-
+        TM_BEGIN();
+        grid_copy(myGridPtr, gridPtr); /* ok if not most up-to-date */
+        if (PdoExpansion(routerPtr, myGridPtr, myExpansionQueuePtr,
+                         srcPtr, dstPtr)) {
+            pointVectorPtr = PdoTraceback(gridPtr, myGridPtr, dstPtr, bendCost);
+            /*
+             * TODO: fix memory leak
+             *
+             * pointVectorPtr will be a memory leak if we abort this transaction
+             */
+            if (pointVectorPtr) {
+                TMGRID_ADDPATH(gridPtr, pointVectorPtr);
+                TM_LOCAL_WRITE(success, TRUE);
+            }
+        }
+        TM_END();
 
         if (success) {
             bool_t status = PVECTOR_PUSHBACK(myPathVectorPtr,
@@ -499,23 +424,10 @@ router_solve (void* argPtr)
      * Add my paths to global list
      */
     list_t* pathVectorListPtr = routerArgPtr->pathVectorListPtr;
-//    int lab_lbl3_b=0;
-    TM_SHORT_BEGIN
-    TMLIST_INSERT_S(pathVectorListPtr, (void*)myPathVectorPtr);
-    TM_SHORT_END
-    TM_LONG_BEGIN //(lab_lbl3)
-    TM_PART_BEGIN
+    TM_BEGIN();
     TMLIST_INSERT(pathVectorListPtr, (void*)myPathVectorPtr);
-    TM_PART_END
     TM_END();
 
-/*    lab_lbl3:
-    if (lab_lbl3_b) {
-    	PLIST_INSERT(pathVectorListPtr, (void*)myPathVectorPtr);
-    	lab_lbl3_b =0;
-    	SUPER_GL_UNLOCK_EXT
-    }
-*/
     PGRID_FREE(myGridPtr);
     PQUEUE_FREE(myExpansionQueuePtr);
 
@@ -525,14 +437,6 @@ router_solve (void* argPtr)
 #endif /* DEBUG */
 
     TM_THREAD_EXIT();
-
-#ifdef STATISTICS
-    TM_TX_VAR
-    	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-    	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-    	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-    	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 

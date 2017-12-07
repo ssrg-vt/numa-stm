@@ -82,6 +82,9 @@
 long int GRID_POINT_FULL  = -2L,
     GRID_POINT_EMPTY = -1L;
 
+const unsigned long CACHE_LINE_SIZE = 64UL;
+
+
 /* =============================================================================
  * grid_alloc
  * =============================================================================
@@ -97,13 +100,19 @@ grid_alloc (long width, long height, long depth)
         gridPtr->height = height;
         gridPtr->depth  = depth;
         long n = width * height * depth;
-        long* points_unaligned = (long*)malloc(n * sizeof(long) + 64);
+        tm_obj<long>* points_unaligned = (tm_obj<long>*)malloc(n * sizeof(tm_obj<long>) + CACHE_LINE_SIZE);
         assert(points_unaligned);
         gridPtr->points_unaligned = points_unaligned;
-        gridPtr->points = (long*)((char*)(((unsigned long)points_unaligned
-                                          & ~(64-1)))
-                                  + 64);
-        memset(gridPtr->points, GRID_POINT_EMPTY, (n * sizeof(long)));
+        gridPtr->points = (tm_obj<long>*)((char*)(((unsigned long)points_unaligned
+                                          & ~(CACHE_LINE_SIZE-1)))
+                                  + CACHE_LINE_SIZE);
+//        memset(gridPtr->points, GRID_POINT_EMPTY, (n * sizeof(long)));
+        for (int i=0; i<n;i++) {
+        	gridPtr->points[i].val = GRID_POINT_EMPTY;
+        	gridPtr->points[i].lock_p = &(gridPtr->points[i].lock);
+        	gridPtr->points[i].lock = 0;
+        	gridPtr->points[i].ver = 0;
+        }
     }
 
     return gridPtr;
@@ -125,13 +134,20 @@ Pgrid_alloc (long width, long height, long depth)
         gridPtr->height = height;
         gridPtr->depth  = depth;
         long n = width * height * depth;
-        long* points_unaligned = (long*)P_MALLOC(n * sizeof(long) + 64);
+
+        tm_obj<long>* points_unaligned = (tm_obj<long>*)P_MALLOC(n * sizeof(tm_obj<long>) + CACHE_LINE_SIZE);
         assert(points_unaligned);
         gridPtr->points_unaligned = points_unaligned;
-        gridPtr->points = (long*)((char*)(((unsigned long)points_unaligned
-                                          & ~(64-1)))
-                                  + 64);
-        memset(gridPtr->points, GRID_POINT_EMPTY, (n * sizeof(long)));
+        gridPtr->points = (tm_obj<long>*)((char*)(((unsigned long)points_unaligned
+                                          & ~(CACHE_LINE_SIZE-1)))
+                                  + CACHE_LINE_SIZE);
+//        memset(gridPtr->points, GRID_POINT_EMPTY, (n * sizeof(long)));
+        for (int i=0; i<n;i++) {
+        	gridPtr->points[i].val = GRID_POINT_EMPTY;
+        	gridPtr->points[i].lock_p = &(gridPtr->points[i].lock);
+        	gridPtr->points[i].lock = 0;
+        	gridPtr->points[i].ver = 0;
+        }
     }
 
     return gridPtr;
@@ -174,12 +190,12 @@ grid_copy (grid_t* dstGridPtr, grid_t* srcGridPtr)
     assert(srcGridPtr->depth  == dstGridPtr->depth);
 
     long n = srcGridPtr->width * srcGridPtr->height * srcGridPtr->depth;
-    memcpy(dstGridPtr->points, srcGridPtr->points, (n * sizeof(long)));
+    memcpy(dstGridPtr->points, srcGridPtr->points, (n * sizeof(tm_obj<long>)));
 
 #ifdef USE_EARLY_RELEASE
-    long* srcPoints = srcGridPtr->points;
+    tm_obj<long>* srcPoints = srcGridPtr->points;
     long i;
-    long i_step = (64 / sizeof(srcPoints[0]));
+    long i_step = (CACHE_LINE_SIZE / sizeof(srcPoints[0]));
     for (i = 0; i < n; i+=i_step) {
         TM_EARLY_RELEASE(srcPoints[i]); /* releases entire line */
     }
@@ -209,7 +225,7 @@ grid_isPointValid (grid_t* gridPtr, long x, long y, long z)
  * grid_getPointRef
  * =============================================================================
  */
-long*
+tm_obj<long>*
 grid_getPointRef (grid_t* gridPtr, long x, long y, long z)
 {
     return &(gridPtr->points[(z * gridPtr->height + y) * gridPtr->width + x]);
@@ -222,7 +238,7 @@ grid_getPointRef (grid_t* gridPtr, long x, long y, long z)
  */
 void
 grid_getPointIndices (grid_t* gridPtr,
-                      long* gridPointPtr, long* xPtr, long* yPtr, long* zPtr)
+				tm_obj<long>* gridPointPtr, long* xPtr, long* yPtr, long* zPtr)
 {
     long height = gridPtr->height;
     long width  = gridPtr->width;
@@ -242,7 +258,7 @@ grid_getPointIndices (grid_t* gridPtr,
 long
 grid_getPoint (grid_t* gridPtr, long x, long y, long z)
 {
-    return *grid_getPointRef(gridPtr, x, y, z);
+    return grid_getPointRef(gridPtr, x, y, z)->val;
 }
 
 
@@ -253,8 +269,8 @@ grid_getPoint (grid_t* gridPtr, long x, long y, long z)
 bool_t
 grid_isPointEmpty (grid_t* gridPtr, long x, long y, long z)
 {
-    long value = grid_getPoint(gridPtr, x, y, z);
-    return ((value == GRID_POINT_EMPTY) ? TRUE : FALSE);
+//	tm_obj<long> value = grid_getPoint(gridPtr, x, y, z);
+    return (((*grid_getPointRef(gridPtr, x, y, z)).val == GRID_POINT_EMPTY) ? TRUE : FALSE);
 }
 
 
@@ -265,8 +281,8 @@ grid_isPointEmpty (grid_t* gridPtr, long x, long y, long z)
 bool_t
 grid_isPointFull (grid_t* gridPtr, long x, long y, long z)
 {
-    long value = grid_getPoint(gridPtr, x, y, z);
-    return ((value == GRID_POINT_FULL) ? TRUE : FALSE);
+//	tm_obj<long> value = grid_getPoint(gridPtr, x, y, z);
+    return (((*grid_getPointRef(gridPtr, x, y, z)).val == GRID_POINT_FULL) ? TRUE : FALSE);
 }
 
 
@@ -277,7 +293,7 @@ grid_isPointFull (grid_t* gridPtr, long x, long y, long z)
 void
 grid_setPoint (grid_t* gridPtr, long x, long y, long z, long value)
 {
-    (*grid_getPointRef(gridPtr, x, y, z)) = value;
+    (*grid_getPointRef(gridPtr, x, y, z)).val = value;
 }
 
 
@@ -305,98 +321,22 @@ grid_addPath (grid_t* gridPtr, vector_t* pointVectorPtr)
  * TMgrid_addPath
  * =============================================================================
  */
-#define SPLIT_SIZE 1
 void
 TMgrid_addPath (TM_ARGDECL  grid_t* gridPtr, vector_t* pointVectorPtr)
 {
     long i;
     long n = vector_getSize(pointVectorPtr);
 
-    //printf("n = %d\n", n);
-//    int initial = 1;
-//    do {
-//    	int limit = initial + SPLIT_SIZE > (n-1)? (n-1): initial + SPLIT_SIZE;
-////    	TM_PART_BEGIN
-//    	{
-//    		SUPER_GL_INIT
-//    		bool more = true;
-//    		unsigned status;
-//    		while (more) {
-//    			//tx->backoff++;
-//    			more = false;
-//    			tx->p_wf.clear();
-////    			SUPER_GL_TX_BEGIN
-//
-//		for (i = initial; i < limit; i++) {
-//			long* gridPointPtr = (long*)vector_at(pointVectorPtr, i);
-//			long value = (long)TM_SHARED_READ(*gridPointPtr);
-//			if (value != GRID_POINT_EMPTY) {
-//				TM_RESTART();
-//				printf("tx restarting\n");
-//			}
-//			TM_SHARED_WRITE(*gridPointPtr, GRID_POINT_FULL);
-//		}
-//
-////    			SUPER_GL_CHECK
-////    					if (tx->rf.intersect(&write_locks, tx->wf) || tx->p_wf.intersect(&write_locks, tx->wf)) {
-////    						_xabort(X_CONFLICT);
-////    					}
-////    					else if (tx->undo_i){
-//    						tx->read_only = false;
-////    						write_locks.unionwith(tx->p_wf);
-////    					}
-////    					_xend();
-//    					tx->wf.unionwith(tx->p_wf);
-//    					tm_check_partition(tx);
-////    					SUPER_GL_CHECK_END
-////    				} else {
-////    					if (status & _XABORT_CODE(X_CONFLICT)) {
-////    						PART_HTM_STAT_1
-////    						tm_abort(tx, 0);
-////    					} else if (status & _XABORT_CODE(X_EXPLICIT_EXT)) {
-////    						PART_HTM_STAT_2
-////    						tm_abort(tx, 1);
-////    					} else
-////    						more = true;
-////    					SUPER_GL_COND
-////    					PART_HTM_STAT_3
-////    					/*for (int i = 0; i < 64*tx->backoff; i++)*/
-////    						/*nop();*/exp_backoff(tx);
-////    				}
-//    			  }
-//    			}
-////    	TM_PART_END
-//    	initial = limit;
-//    } while(initial!=(n-1));
-
-
     for (i = 1; i < (n-1); i++) {
-		long* gridPointPtr = (long*)vector_at(pointVectorPtr, i);
-		TM_PART_BEGIN
-		long value = (long)TM_SHARED_READ(*gridPointPtr);
-		if (value != GRID_POINT_EMPTY) {
-			TM_RESTART();
-		}
-		TM_SHARED_WRITE(*gridPointPtr, GRID_POINT_FULL);
-		TM_PART_END
-	}
+        tm_obj<long>* gridPointPtr = (tm_obj<long>*)vector_at(pointVectorPtr, i);
+        long value = (long)TM_SHARED_READ(*gridPointPtr);
+        if (value != GRID_POINT_EMPTY) {
+            TM_RESTART();
+        }
+        TM_SHARED_WRITE(*gridPointPtr, GRID_POINT_FULL);
+    }
 }
 
-void
-TMgrid_addPath_s (TM_ARGDECL  grid_t* gridPtr, vector_t* pointVectorPtr)
-{
-    long i;
-    long n = vector_getSize(pointVectorPtr);
-
-    for (i = 1; i < (n-1); i++) {
-		long* gridPointPtr = (long*)vector_at(pointVectorPtr, i);
-		long value = (long)TM_SHARED_READ(*gridPointPtr);
-		if (value != GRID_POINT_EMPTY) {
-			TM_RESTART();
-		}
-		TM_SHORT_WRITE(*gridPointPtr, GRID_POINT_FULL);
-	}
-}
 
 /* =============================================================================
  * grid_print
@@ -416,7 +356,7 @@ grid_print (grid_t* gridPtr)
         for (x = 0; x < width; x++) {
             long y;
             for (y = 0; y < height; y++) {
-                printf("%4li", *grid_getPointRef(gridPtr, x, y, z));
+                printf("%4li", grid_getPointRef(gridPtr, x, y, z)->val);
             }
             puts("");
         }

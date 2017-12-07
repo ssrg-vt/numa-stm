@@ -331,7 +331,10 @@ hashtable_alloc (long initNumBucket,
 
     hashtablePtr->numBucket = initNumBucket;
 #ifdef HASHTABLE_SIZE_FIELD
-    hashtablePtr->size = 0;
+    hashtablePtr->size.val = 0;
+    hashtablePtr->size.lock_p = &(hashtablePtr->size.lock);
+    hashtablePtr->size.lock = 0;
+    hashtablePtr->size.ver = 0;
 #endif
     hashtablePtr->hash = hash;
     hashtablePtr->comparePairs = comparePairs;
@@ -373,7 +376,10 @@ TMhashtable_alloc (TM_ARGDECL
 
     hashtablePtr->numBucket = initNumBucket;
 #ifdef HASHTABLE_SIZE_FIELD
-    hashtablePtr->size = 0;
+    hashtablePtr->size.val = 0;
+    hashtablePtr->size.lock_p = &(hashtablePtr->size.lock);
+    hashtablePtr->size.lock = 0;
+    hashtablePtr->size.ver = 0;
 #endif
     hashtablePtr->hash = hash;
     hashtablePtr->comparePairs = comparePairs;
@@ -452,7 +458,7 @@ bool_t
 hashtable_isEmpty (hashtable_t* hashtablePtr)
 {
 #ifdef HASHTABLE_SIZE_FIELD
-    return ((hashtablePtr->size == 0) ? TRUE : FALSE);
+    return ((hashtablePtr->size.val == 0) ? TRUE : FALSE);
 #else
     long i;
 
@@ -499,7 +505,7 @@ long
 hashtable_getSize (hashtable_t* hashtablePtr)
 {
 #ifdef HASHTABLE_SIZE_FIELD
-    return hashtablePtr->size;
+    return hashtablePtr->size.val;
 #else
     long i;
     long size = 0;
@@ -679,7 +685,7 @@ hashtable_insert (hashtable_t* hashtablePtr, void* keyPtr, void* dataPtr)
     }
 
 #ifdef HASHTABLE_SIZE_FIELD
-    newSize = hashtablePtr->size + 1;
+    newSize = hashtablePtr->size.val + 1;
     assert(newSize > 0);
 #elif defined(HASHTABLE_RESIZABLE)
     newSize = hashtable_getSize(hashtablePtr) + 1;
@@ -708,7 +714,7 @@ hashtable_insert (hashtable_t* hashtablePtr, void* keyPtr, void* dataPtr)
         return FALSE;
     }
 #ifdef HASHTABLE_SIZE_FIELD
-    hashtablePtr->size = newSize;
+    hashtablePtr->size.val = newSize;
 #endif
 
     return TRUE;
@@ -779,8 +785,8 @@ hashtable_remove (hashtable_t* hashtablePtr, void* keyPtr)
     pair_free(pairPtr);
 
 #ifdef HASHTABLE_SIZE_FIELD
-    hashtablePtr->size--;
-    assert(hashtablePtr->size >= 0);
+    hashtablePtr->size.val--;
+    assert(hashtablePtr->size.val >= 0);
 #endif
 
     return TRUE;
@@ -814,7 +820,7 @@ TMhashtable_remove (TM_ARGDECL  hashtable_t* hashtablePtr, void* keyPtr)
 #ifdef HASHTABLE_SIZE_FIELD
     TM_SHARED_WRITE(hashtablePtr->size
                     (long)TM_SHARED_READ(hashtablePtr->size)-1);
-    assert(hashtablePtr->size >= 0);
+    assert(hashtablePtr->size.val >= 0);
 #endif
 
     return TRUE;

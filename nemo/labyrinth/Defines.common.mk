@@ -3,11 +3,6 @@
 # Defines.common.mk
 #
 # ==============================================================================
-CFLAGS += -DSUPER_GL_LIMIT=100 
-CFLAGS += -DSUPER_GL_LIMIT2=100
-CFLAGS += -DRETRY_SHORT=5
-CFLAGS += -DBLOOM_SIZE=6114
-
 LIBS += -lm
 
 PROG := labyrinth
@@ -25,8 +20,8 @@ SRCS += \
 	$(LIB)/random.c \
 	$(LIB)/thread.c \
 	$(LIB)/vector.c \
-	$(LIB)/htm.c \
-	$(LIB)/stm/SpookyV2.c \
+	$(LIB)/../tm/WriteSet.c \
+	$(LIB)/../tm/tm_thread.c \
 #
 OBJS := ${SRCS:.c=.o}
 
