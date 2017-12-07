@@ -120,7 +120,11 @@ struct grant_batch_msg {
 	bool granted[MAX_BATCH];
 };
 
+#ifdef HUGE_READSET
+#define ACCESS_SIZE 302400
+#else
 #define ACCESS_SIZE 102400
+#endif
 //Tx context
 struct Tx_Context {
 	int id;
@@ -263,6 +267,9 @@ FORCE_INLINE T tm_read(tm_obj<T>* addr, Tx_Context* tx, int numa_zone)
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
+	if (r_pos > ACCESS_SIZE) {
+		printf("read_set over flow %d!!!\n", ACCESS_SIZE);
+	}
 	tx->reads[r_pos] = addr;
 	return val;
 }

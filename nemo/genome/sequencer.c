@@ -100,14 +100,14 @@ struct endInfoEntry {
 };
 
 struct constructEntry {
-    bool_t isStart;
-    char* segment;
+	tm_obj<bool_t> isStart;
+    tm_obj<char*> segment;
     ulong_t endHash;
-    struct constructEntry* startPtr;
+    tm_obj<struct constructEntry*> startPtr;
     struct constructEntry* nextPtr;
-    struct constructEntry* endPtr;
-    long overlap;
-    long length;
+    tm_obj<struct constructEntry*> endPtr;
+    tm_obj<long> overlap;
+    tm_obj<long> length;
 };
 
 
@@ -208,14 +208,32 @@ sequencer_alloc (long geneLength, long segmentLength, segments_t* segmentsPtr)
     }
     for (i= 0; i < maxNumUniqueSegment; i++) {
         constructEntry_t* constructEntryPtr = &sequencerPtr->constructEntries[i];
-        constructEntryPtr->isStart = TRUE;
-        constructEntryPtr->segment = NULL;
+        constructEntryPtr->isStart.val = TRUE;
+        constructEntryPtr->isStart.lock_p = &(constructEntryPtr->isStart.lock);
+        constructEntryPtr->isStart.lock = 0;
+        constructEntryPtr->isStart.ver = 0;
+        constructEntryPtr->segment.val = NULL;
+        constructEntryPtr->segment.lock_p = &(constructEntryPtr->segment.lock);
+        constructEntryPtr->segment.lock = 0;
+        constructEntryPtr->segment.ver = 0;
         constructEntryPtr->endHash = 0;
-        constructEntryPtr->startPtr = constructEntryPtr;
+        constructEntryPtr->startPtr.val = constructEntryPtr;
+        constructEntryPtr->startPtr.lock_p = &(constructEntryPtr->startPtr.lock);
+        constructEntryPtr->startPtr.lock = 0;
+        constructEntryPtr->startPtr.ver = 0;
         constructEntryPtr->nextPtr = NULL;
-        constructEntryPtr->endPtr = constructEntryPtr;
-        constructEntryPtr->overlap = 0;
-        constructEntryPtr->length = segmentLength;
+        constructEntryPtr->endPtr.val = constructEntryPtr;
+        constructEntryPtr->endPtr.lock_p = &(constructEntryPtr->endPtr.lock);
+        constructEntryPtr->endPtr.lock = 0;
+        constructEntryPtr->endPtr.ver = 0;
+        constructEntryPtr->overlap.val = 0;
+        constructEntryPtr->overlap.lock_p = &(constructEntryPtr->overlap.lock);
+        constructEntryPtr->overlap.lock = 0;
+        constructEntryPtr->overlap.ver = 0;
+        constructEntryPtr->length.val = segmentLength;
+        constructEntryPtr->length.lock_p = &(constructEntryPtr->length.lock);
+        constructEntryPtr->length.lock = 0;
+        constructEntryPtr->length.ver = 0;
     }
     sequencerPtr->hashToConstructEntryTable = table_alloc(geneLength, NULL);
     if (sequencerPtr->hashToConstructEntryTable == NULL) {
@@ -235,9 +253,9 @@ sequencer_alloc (long geneLength, long segmentLength, segments_t* segmentsPtr)
 void
 sequencer_run (void* argPtr)
 {
-    TM_THREAD_ENTER();
-
     long threadId = thread_getId();
+    TM_THREAD_ENTER(threadId, 0, 0);
+
 
     sequencer_t* sequencerPtr = (sequencer_t*)argPtr;
 
@@ -287,29 +305,15 @@ sequencer_run (void* argPtr)
 //     i_stop = numSegment;
 // #endif /* !(HTM || STM) */
     for (i = i_start; i < i_stop; i+=CHUNK_STEP1) {
-    	TM_SHORT_BEGIN
-    	{
-			long ii;
-			long ii_stop = MIN(i_stop, (i+CHUNK_STEP1));
-			for (ii = i; ii < ii_stop; ii++) {
-				void* segment = vector_at(segmentsContentsPtr, ii);
-				TMHASHTABLE_INSERT_S(uniqueSegmentsPtr,
-								   segment,
-								   segment);
-			} /* ii */
-		}
-    	TM_SHORT_END
-    	TM_LONG_BEGIN
+        TM_BEGIN();
         {
             long ii;
             long ii_stop = MIN(i_stop, (i+CHUNK_STEP1));
             for (ii = i; ii < ii_stop; ii++) {
                 void* segment = vector_at(segmentsContentsPtr, ii);
-                TM_PART_BEGIN
                 TMHASHTABLE_INSERT(uniqueSegmentsPtr,
                                    segment,
                                    segment);
-                TM_PART_END
             } /* ii */
         }
         TM_END();
@@ -380,22 +384,12 @@ sequencer_run (void* argPtr)
             bool_t status;
 
             /* Find an empty constructEntries entry */
-
-            TM_SHORT_BEGIN
-            while (((void*)TM_SHARED_READ_P(constructEntries[entryIndex].segment)) != NULL) {
-                entryIndex = (entryIndex + 1) % numUniqueSegment; /* look for empty */
-            }
-            constructEntryPtr = &constructEntries[entryIndex];
-            TM_SHORT_WRITE(constructEntryPtr->segment, segment);
-            TM_SHORT_END
-            TM_GL_BEGIN
-            TM_PART_BEGIN
+            TM_BEGIN();
             while (((void*)TM_SHARED_READ_P(constructEntries[entryIndex].segment)) != NULL) {
                 entryIndex = (entryIndex + 1) % numUniqueSegment; /* look for empty */
             }
             constructEntryPtr = &constructEntries[entryIndex];
             TM_SHARED_WRITE_P(constructEntryPtr->segment, segment);
-            TM_PART_END
             TM_END();
             entryIndex = (entryIndex + 1) % numUniqueSegment;
 
@@ -416,20 +410,12 @@ sequencer_run (void* argPtr)
             for (j = 1; j < segmentLength; j++) {
                 startHash = (ulong_t)segment[j-1] +
                             (startHash << 6) + (startHash << 16) - startHash;
-                TM_SHORT_BEGIN
-                status = TMTABLE_INSERT_S(startHashToConstructEntryTables[j],
-										(ulong_t)startHash,
-										(void*)constructEntryPtr );
-                TM_SHORT_END
-                TM_GL_BEGIN
-                TM_PART_BEGIN
+                TM_BEGIN();
                 status = TMTABLE_INSERT(startHashToConstructEntryTables[j],
                                         (ulong_t)startHash,
                                         (void*)constructEntryPtr );
-                TM_PART_END
                 TM_END();
-//                printf("status %d\n", status);
-//                assert(status);
+                assert(status);
             }
 
             /*
@@ -437,19 +423,12 @@ sequencer_run (void* argPtr)
              */
             startHash = (ulong_t)segment[j-1] +
                         (startHash << 6) + (startHash << 16) - startHash;
-            TM_SHORT_BEGIN
-            status = TMTABLE_INSERT_S(hashToConstructEntryTable,
-                                    (ulong_t)startHash,
-                                    (void*)constructEntryPtr);
-            TM_SHORT_END
-            TM_GL_BEGIN
-            TM_PART_BEGIN
+            TM_BEGIN();
             status = TMTABLE_INSERT(hashToConstructEntryTable,
                                     (ulong_t)startHash,
                                     (void*)constructEntryPtr);
-            TM_PART_END
             TM_END();
-//            assert(status);
+            assert(status);
         }
     }
 
@@ -496,7 +475,7 @@ sequencer_run (void* argPtr)
             /*  ConstructEntries[entryIndex] is local data */
             constructEntry_t* endConstructEntryPtr =
                 &constructEntries[entryIndex];
-            char* endSegment = endConstructEntryPtr->segment;
+            char* endSegment = endConstructEntryPtr->segment.val;
             ulong_t endHash = endConstructEntryPtr->endHash;
 
             list_t* chainPtr = buckets[endHash % numBucket]; /* buckets: constant data */
@@ -508,48 +487,12 @@ sequencer_run (void* argPtr)
 
                 constructEntry_t* startConstructEntryPtr =
                     (constructEntry_t*)list_iter_next(&it, chainPtr);
-                char* startSegment = startConstructEntryPtr->segment;
+                char* startSegment = startConstructEntryPtr->segment.val;
                 long newLength = 0;
 
                 /* endConstructEntryPtr is local except for properties startPtr/endPtr/length */
-                TM_SHORT_BEGIN
-                if (TM_SHARED_READ(startConstructEntryPtr->isStart) &&
-                    (TM_SHARED_READ_P(endConstructEntryPtr->startPtr) != startConstructEntryPtr) &&
-                    (strncmp(startSegment,
-                             &endSegment[segmentLength - substringLength],
-                             substringLength) == 0))
-                {
-                    TM_SHORT_WRITE(startConstructEntryPtr->isStart, FALSE);
+                TM_BEGIN();
 
-                    constructEntry_t* startConstructEntry_endPtr;
-                    constructEntry_t* endConstructEntry_startPtr;
-
-                    /* Update endInfo (appended something so no longer end) */
-                    TM_LOCAL_WRITE(endInfoEntries[entryIndex].isEnd, FALSE);
-
-                    /* Update segment chain construct info */
-                    startConstructEntry_endPtr =
-                        (constructEntry_t*)TM_SHARED_READ_P(startConstructEntryPtr->endPtr);
-                    endConstructEntry_startPtr =
-                        (constructEntry_t*)TM_SHARED_READ_P(endConstructEntryPtr->startPtr);
-
-                    assert(startConstructEntry_endPtr);
-                    assert(endConstructEntry_startPtr);
-                    TM_SHORT_WRITE(startConstructEntry_endPtr->startPtr,
-                                      endConstructEntry_startPtr);
-                    TM_SHORT_WRITE(endConstructEntryPtr->nextPtr,
-                                     startConstructEntryPtr);
-                    TM_SHORT_WRITE(endConstructEntry_startPtr->endPtr,
-                                      startConstructEntry_endPtr);
-                    TM_SHORT_WRITE(endConstructEntryPtr->overlap, substringLength);
-                    newLength = (long)TM_SHARED_READ(endConstructEntry_startPtr->length) +
-                                (long)TM_SHARED_READ(startConstructEntryPtr->length) -
-                                substringLength;
-                    TM_SHORT_WRITE(endConstructEntry_startPtr->length, newLength);
-                } /* if (matched) */
-                TM_SHORT_END
-                TM_GL_BEGIN
-                TM_PART_BEGIN
                 /* Check if matches */
                 if (TM_SHARED_READ(startConstructEntryPtr->isStart) &&
                     (TM_SHARED_READ_P(endConstructEntryPtr->startPtr) != startConstructEntryPtr) &&
@@ -557,7 +500,7 @@ sequencer_run (void* argPtr)
                              &endSegment[segmentLength - substringLength],
                              substringLength) == 0))
                 {
-                    TM_SHARED_WRITE(startConstructEntryPtr->isStart, FALSE);
+                    TM_SHARED_WRITE(startConstructEntryPtr->isStart, (long)FALSE);
 
                     constructEntry_t* startConstructEntry_endPtr;
                     constructEntry_t* endConstructEntry_startPtr;
@@ -585,7 +528,7 @@ sequencer_run (void* argPtr)
                                 substringLength;
                     TM_SHARED_WRITE(endConstructEntry_startPtr->length, newLength);
                 } /* if (matched) */
-                TM_PART_END
+
                 TM_END();
 
                 if (!endInfoEntries[entryIndex].isEnd) { /* if there was a match */
@@ -617,14 +560,14 @@ sequencer_run (void* argPtr)
                 endInfoEntries[0].jumpToNext = i;
                 if (endInfoEntries[0].isEnd) {
                     constructEntry_t* constructEntryPtr = &constructEntries[0];
-                    char* segment = constructEntryPtr->segment;
+                    char* segment = constructEntryPtr->segment.val;
                     constructEntryPtr->endHash = (ulong_t)hashString(&segment[index]);
                 }
                 /* Continue scanning (do not reset i) */
                 for (j = 0; i < numUniqueSegment; i+=endInfoEntries[i].jumpToNext) {
                     if (endInfoEntries[i].isEnd) {
                         constructEntry_t* constructEntryPtr = &constructEntries[i];
-                        char* segment = constructEntryPtr->segment;
+                        char* segment = constructEntryPtr->segment.val;
                         constructEntryPtr->endHash = (ulong_t)hashString(&segment[index]);
                         endInfoEntries[j].jumpToNext = MAX(1, (i - j));
                         j = i;
@@ -650,8 +593,8 @@ sequencer_run (void* argPtr)
 
         for (i = 0; i < numUniqueSegment; i++) {
             constructEntry_t* constructEntryPtr = &constructEntries[i];
-            if (constructEntryPtr->isStart) {
-              totalLength += constructEntryPtr->length;
+            if (constructEntryPtr->isStart.val) {
+              totalLength += constructEntryPtr->length.val;
             }
         }
 
@@ -665,19 +608,19 @@ sequencer_run (void* argPtr)
         for (i = 0; i < numUniqueSegment; i++) {
             constructEntry_t* constructEntryPtr = &constructEntries[i];
             /* If there are several start segments, we append in arbitrary order  */
-            if (constructEntryPtr->isStart) {
-                long newSequenceLength = sequenceLength + constructEntryPtr->length;
+            if (constructEntryPtr->isStart.val) {
+                long newSequenceLength = sequenceLength + constructEntryPtr->length.val;
                 assert( newSequenceLength <= totalLength );
                 copyPtr = sequence + sequenceLength;
                 sequenceLength = newSequenceLength;
                 do {
-                    long numChar = segmentLength - constructEntryPtr->overlap;
+                    long numChar = segmentLength - constructEntryPtr->overlap.val;
                     if ((copyPtr + numChar) > (sequence + newSequenceLength)) {
                         TM_PRINT0("ERROR: sequence length != actual length\n");
                         break;
                     }
                     memcpy(copyPtr,
-                           constructEntryPtr->segment,
+                           constructEntryPtr->segment.val,
                            (numChar * sizeof(char)));
                     copyPtr += numChar;
                 } while ((constructEntryPtr = constructEntryPtr->nextPtr) != NULL);
@@ -690,14 +633,6 @@ sequencer_run (void* argPtr)
     }
 
     TM_THREAD_EXIT();
-
-#ifdef STATISTICS
-    TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 

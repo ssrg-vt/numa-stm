@@ -32,7 +32,6 @@ namespace stm
       /***  Rebuild the writeset */
       void WriteSet::rebuild()
       {
-
           // extend the index
           delete[] index;
           index = new index_t[doubleIndexLength()];

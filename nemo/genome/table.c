@@ -147,18 +147,6 @@ TMtable_insert (TM_ARGDECL  table_t* tablePtr, ulong_t hash, void* dataPtr)
 }
 
 
-bool_t
-TMtable_insert_s (TM_ARGDECL  table_t* tablePtr, ulong_t hash, void* dataPtr)
-{
-    long i = hash % tablePtr->numBucket;
-
-    if (!TMLIST_INSERT_S(tablePtr->buckets[i], dataPtr)) {
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
 /* =============================================================================
  * table_remove
  * -- Returns TRUE if successful, else FALSE

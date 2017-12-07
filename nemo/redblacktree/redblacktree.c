@@ -56,7 +56,7 @@ typedef rbtree_t intset_t;
 
 intset_t *set_new()
 {
-  return rbtree_alloc();
+  return rbtree_alloc(NULL);
 }
 
 void set_delete(intset_t *set)
@@ -73,13 +73,8 @@ int set_add(intset_t *set, intptr_t val)
 //  wlpdstm_choose_tm_desc(tx, TM_MIXED);
     int res = 0;
 
-    TM_SHORT_BEGIN
-    res = !TMrbtree_insert_s(TM_ARG set, val, val);
-    TM_SHORT_END
-    TM_LONG_BEGIN
-    TM_PART_BEGIN
+    TM_BEGIN()
     res = !TMrbtree_insert(TM_ARG set, val, val);
-    TM_PART_END
     TM_END();
 
     return res;
@@ -89,13 +84,8 @@ int set_remove(intset_t *set, intptr_t val)
 {
     int res = 0;
 
-    TM_SHORT_BEGIN
-    res = TMrbtree_delete_s(TM_ARG set, val);
-    TM_SHORT_END
-    TM_LONG_BEGIN
-    TM_PART_BEGIN
+    TM_BEGIN()
     res = TMrbtree_delete(TM_ARG set, val);
-    TM_PART_END
     TM_END();
 
     return res;
@@ -105,13 +95,8 @@ int set_contains(intset_t *set, intptr_t val)
 {
     int res = 0;
 
-    TM_SHORT_BEGIN
+    TM_BEGIN()
     res = TMrbtree_contains(TM_ARG set, val);
-    TM_SHORT_END
-    TM_LONG_BEGIN
-    TM_PART_BEGIN
-    res = TMrbtree_contains(TM_ARG set, val);
-    TM_PART_END
     TM_END();
 
     return res;
@@ -167,7 +152,8 @@ void *test(void *data)
 {
   int val;
 
-  TM_THREAD_ENTER();
+  long threadId = thread_getId();
+  TM_THREAD_ENTER(threadId, 0, 0);
 
   unsigned int mySeed = seed;
   int myDiff = diff;
@@ -200,14 +186,6 @@ void *test(void *data)
   }
 
   TM_THREAD_EXIT();
-
-#ifdef	STATISTICS
-	TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 
   return NULL;
 }

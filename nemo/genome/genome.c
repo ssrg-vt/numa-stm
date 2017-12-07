@@ -181,7 +181,6 @@ parseArgs (long argc, char* const argv[])
  */
 MAIN (argc,argv)
 {
-//	RETRY_SHORT = 5;
     TIMER_T start;
     TIMER_T stop;
 

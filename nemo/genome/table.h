@@ -110,8 +110,6 @@ table_insert (table_t* tablePtr, ulong_t hash, void* dataPtr);
 bool_t
 TMtable_insert (TM_ARGDECL  table_t* tablePtr, ulong_t hash, void* dataPtr);
 
-bool_t
-TMtable_insert_s (TM_ARGDECL  table_t* tablePtr, ulong_t hash, void* dataPtr);
 
 /* =============================================================================
  * table_remove
@@ -131,7 +129,6 @@ table_free (table_t* tablePtr);
 
 
 #define TMTABLE_INSERT(t, h, d)         TMtable_insert(TM_ARG  t, h, d)
-#define TMTABLE_INSERT_S(t, h, d)         TMtable_insert_s(TM_ARG  t, h, d)
 
 
 #endif /* TABLE_H */
