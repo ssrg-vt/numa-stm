@@ -77,7 +77,7 @@
 #include "tm.h"
 #include "utility.h"
 
-static LONGINT_T global_maxWeight          = 0;
+static tm_obj<LONGINT_T> global_maxWeight;
 static long*     global_i_edgeStartCounter = NULL;
 static long*     global_i_edgeEndCounter   = NULL;
 static edge*     global_maxIntWtList       = NULL;
@@ -91,7 +91,11 @@ static edge*     global_soughtStrWtList    = NULL;
 void
 getStartLists (void* argPtr)
 {
-    TM_THREAD_ENTER();
+//	global_maxWeight.lock_p = &(global_maxWeight.lock);
+//	global_maxWeight.lock = 0;
+//	global_maxWeight.ver = 0;
+    long myId = thread_getId();
+	TM_THREAD_ENTER(myId, 0, 0);
 
     graph* GPtr                = ((getStartLists_arg_t*)argPtr)->GPtr;
     edge** maxIntWtListPtr     = ((getStartLists_arg_t*)argPtr)->maxIntWtListPtr;
@@ -99,7 +103,6 @@ getStartLists (void* argPtr)
     edge** soughtStrWtListPtr  = ((getStartLists_arg_t*)argPtr)->soughtStrWtListPtr;
     long*  soughtStrWtListSize = ((getStartLists_arg_t*)argPtr)->soughtStrWtListSize;
 
-    long myId = thread_getId();
     long numThread = thread_getNumThread();
 
     /*
@@ -119,25 +122,16 @@ getStartLists (void* argPtr)
         }
     }
 
-    long tmp_maxWeight;
-    TM_SHORT_BEGIN
-		tmp_maxWeight = (long)TM_SHARED_READ(global_maxWeight);
-		if (maxWeight > tmp_maxWeight) {
-			TM_SHORT_WRITE(global_maxWeight, maxWeight);
-		}
-	TM_SHORT_END
-	TM_LONG_BEGIN
-	TM_PART_BEGIN
-		tmp_maxWeight = (long)TM_SHARED_READ(global_maxWeight);
-		if (maxWeight > tmp_maxWeight) {
-			TM_SHARED_WRITE(global_maxWeight, maxWeight);
-		}
-	TM_PART_END
-	TM_END();
+    TM_BEGIN();
+    long tmp_maxWeight = (long)TM_SHARED_READ(global_maxWeight);
+    if (maxWeight > tmp_maxWeight) {
+        TM_SHARED_WRITE(global_maxWeight, maxWeight);
+    }
+    TM_END();
 
     thread_barrier_wait();
 
-    maxWeight = global_maxWeight;
+    maxWeight = global_maxWeight.val;
 
     /*
      * Create partial lists
@@ -336,13 +330,6 @@ getStartLists (void* argPtr)
     P_FREE(tmpEdgeList);
 
     TM_THREAD_EXIT();
-#ifdef	STATISTICS
-	TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 

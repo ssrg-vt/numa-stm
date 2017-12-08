@@ -76,10 +76,10 @@
 #include "tm.h"
 
 static ULONGINT_T*  global_p                 = NULL;
-static ULONGINT_T   global_maxNumVertices    = 0;
-static ULONGINT_T   global_outVertexListSize = 0;
-static ULONGINT_T*  global_impliedEdgeList   = NULL;
-static ULONGINT_T** global_auxArr            = NULL;
+static tm_obj<ULONGINT_T>   global_maxNumVertices    ;
+static tm_obj<ULONGINT_T>   global_outVertexListSize ;
+static tm_obj<ULONGINT_T>*  global_impliedEdgeList   = NULL;
+static tm_obj<tm_obj<ULONGINT_T>*>* global_auxArr            = NULL;
 
 
 /* =============================================================================
@@ -87,7 +87,65 @@ static ULONGINT_T** global_auxArr            = NULL;
  * =============================================================================
  */
 static void
-prefix_sums (ULONGINT_T* result, LONGINT_T* input, ULONGINT_T arraySize)
+prefix_sums (ULONGINT_T* result, tm_obj<LONGINT_T>* input, ULONGINT_T arraySize)
+{
+    long myId = thread_getId();
+    long numThread = thread_getNumThread();
+
+    ULONGINT_T* p = NULL;
+    if (myId == 0) {
+        p = (ULONGINT_T*)P_MALLOC(NOSHARE(numThread) * sizeof(ULONGINT_T));
+        assert(p);
+        global_p = p;
+    }
+
+    thread_barrier_wait();
+
+    p = global_p;
+
+    long start;
+    long end;
+
+    long r = arraySize / numThread;
+    start = myId * r + 1;
+    end = (myId + 1) * r;
+    if (myId == (numThread - 1)) {
+        end = arraySize;
+    }
+
+    ULONGINT_T j;
+    for (j = start; j < end; j++) {
+        result[j] = input[j-1].val + result[j-1];
+    }
+
+    p[NOSHARE(myId)] = result[end-1];
+
+    thread_barrier_wait();
+
+    if (myId == 0) {
+        for (j = 1; j < numThread; j++) {
+            p[NOSHARE(j)] += p[NOSHARE(j-1)];
+        }
+    }
+
+    thread_barrier_wait();
+
+    if (myId > 0) {
+        ULONGINT_T add_value = p[NOSHARE(myId-1)];
+        for (j = start-1; j < end; j++) {
+            result[j] += add_value;
+        }
+    }
+
+    thread_barrier_wait();
+
+    if (myId == 0) {
+        P_FREE(p);
+    }
+}
+
+static void
+prefix_sums2 (ULONGINT_T* result, LONGINT_T* input, ULONGINT_T arraySize)
 {
     long myId = thread_getId();
     long numThread = thread_getNumThread();
@@ -152,12 +210,12 @@ prefix_sums (ULONGINT_T* result, LONGINT_T* input, ULONGINT_T arraySize)
 void
 computeGraph (void* argPtr)
 {
-    TM_THREAD_ENTER();
+    long myId = thread_getId();
+    TM_THREAD_ENTER(myId, 0, 0);
 
     graph*    GPtr       = ((computeGraph_arg_t*)argPtr)->GPtr;
     graphSDG* SDGdataPtr = ((computeGraph_arg_t*)argPtr)->SDGdataPtr;
 
-    long myId = thread_getId();
     long numThread = thread_getNumThread();
 
     ULONGINT_T j;
@@ -180,24 +238,15 @@ computeGraph (void* argPtr)
         }
     }
 
-    long tmp_maxNumVertices;
-    long new_maxNumVertices;
-    TM_SHORT_BEGIN
-    	tmp_maxNumVertices = (long)TM_SHARED_READ(global_maxNumVertices);
-        new_maxNumVertices = MAX(tmp_maxNumVertices, maxNumVertices) + 1;
-        TM_SHORT_WRITE(global_maxNumVertices, (ULONGINT_T)new_maxNumVertices);
-    TM_SHORT_END
-    TM_LONG_BEGIN
-	TM_PART_BEGIN
-		tmp_maxNumVertices = (long)TM_SHARED_READ(global_maxNumVertices);
-		new_maxNumVertices = MAX(tmp_maxNumVertices, maxNumVertices) + 1;
-		TM_SHARED_WRITE(global_maxNumVertices, (ULONGINT_T)new_maxNumVertices);
-    TM_PART_END
+    TM_BEGIN();
+    ULONGINT_T tmp_maxNumVertices = (long)TM_SHARED_READ(global_maxNumVertices);
+    ULONGINT_T new_maxNumVertices = MAX(tmp_maxNumVertices, maxNumVertices) + 1;
+    TM_SHARED_WRITE(global_maxNumVertices, new_maxNumVertices);
     TM_END();
 
     thread_barrier_wait();
 
-    maxNumVertices = global_maxNumVertices;
+    maxNumVertices = global_maxNumVertices.val;
 
     if (myId == 0) {
 
@@ -301,28 +350,20 @@ computeGraph (void* argPtr)
 
     thread_barrier_wait();
 
-    prefix_sums(GPtr->outVertexIndex, GPtr->outDegree, GPtr->numVertices);
+    prefix_sums2(GPtr->outVertexIndex, GPtr->outDegree, GPtr->numVertices);
 
     thread_barrier_wait();
 
-    TM_SHORT_BEGIN
-		TM_SHORT_WRITE(
-				global_outVertexListSize,
-				((long)TM_SHARED_READ(global_outVertexListSize) + outVertexListSize)
-			);
-	TM_SHORT_END
-	TM_LONG_BEGIN
-	TM_PART_BEGIN
-		TM_SHARED_WRITE(
-			global_outVertexListSize,
-			((long)TM_SHARED_READ(global_outVertexListSize) + outVertexListSize)
-		);
-	TM_PART_END
+    TM_BEGIN();
+    TM_SHARED_WRITE(
+        global_outVertexListSize,
+        ((long)TM_SHARED_READ(global_outVertexListSize) + outVertexListSize)
+    );
     TM_END();
 
     thread_barrier_wait();
 
-    outVertexListSize = global_outVertexListSize;
+    outVertexListSize = global_outVertexListSize.val;
 
     if (myId == 0) {
         GPtr->numDirectedEdges = outVertexListSize;
@@ -416,7 +457,12 @@ computeGraph (void* argPtr)
         P_FREE(SDGdataPtr->startVertex);
         P_FREE(SDGdataPtr->endVertex);
         GPtr->inDegree =
-            (LONGINT_T*)P_MALLOC(GPtr->numVertices * sizeof(LONGINT_T));
+            (tm_obj<LONGINT_T>*)P_MALLOC(GPtr->numVertices * sizeof(tm_obj<LONGINT_T>));
+        //TODO init
+        memset(GPtr->inDegree, 0, GPtr->numVertices * sizeof(tm_obj<LONGINT_T>));
+        for (int j=0; j<GPtr->numVertices; j++){
+        	GPtr->inDegree[j].lock_p = &(GPtr->inDegree[j].lock);
+        }
         assert(GPtr->inDegree);
         GPtr->inVertexIndex =
             (ULONGINT_T*)P_MALLOC(GPtr->numVertices * sizeof(ULONGINT_T));
@@ -426,16 +472,22 @@ computeGraph (void* argPtr)
     thread_barrier_wait();
 
     for (i = i_start; i < i_stop; i++) {
-        GPtr->inDegree[i] = 0;
+        GPtr->inDegree[i].val = 0;
         GPtr->inVertexIndex[i] = 0;
     }
 
     /* A temp. array to store the inplied edges */
-    ULONGINT_T* impliedEdgeList;
+    tm_obj<ULONGINT_T>* impliedEdgeList;
     if (myId == 0) {
-        impliedEdgeList = (ULONGINT_T*)P_MALLOC(GPtr->numVertices
+        impliedEdgeList = (tm_obj<ULONGINT_T>*)P_MALLOC(GPtr->numVertices
                                                 * MAX_CLUSTER_SIZE
-                                                * sizeof(ULONGINT_T));
+                                                * sizeof(tm_obj<ULONGINT_T>));
+        memset(impliedEdgeList, 0, GPtr->numVertices
+                                                * MAX_CLUSTER_SIZE
+                                                * sizeof(tm_obj<ULONGINT_T>));
+        for (int j=0; j<GPtr->numVertices * MAX_CLUSTER_SIZE; j++) {
+        	impliedEdgeList[j].lock_p = &(impliedEdgeList[j].lock);
+        }
         global_impliedEdgeList = impliedEdgeList;
     }
 
@@ -451,7 +503,7 @@ computeGraph (void* argPtr)
                     &i_stop);
 
     for (i = i_start; i < i_stop; i++) {
-        impliedEdgeList[i] = 0;
+        impliedEdgeList[i].val = 0;
     }
 
     /*
@@ -459,9 +511,13 @@ computeGraph (void* argPtr)
      * MAX_CLUSTER_SIZE
      */
 
-    ULONGINT_T** auxArr;
+    tm_obj<tm_obj<ULONGINT_T>*>* auxArr;
     if (myId == 0) {
-        auxArr = (ULONGINT_T**)P_MALLOC(GPtr->numVertices * sizeof(ULONGINT_T*));
+        auxArr = (tm_obj<tm_obj<ULONGINT_T>*>*)P_MALLOC(GPtr->numVertices * sizeof(tm_obj<tm_obj<ULONGINT_T>*>));
+        memset(auxArr, 0, GPtr->numVertices * sizeof(tm_obj<tm_obj<ULONGINT_T>*>));
+        for (int j=0; j<GPtr->numVertices; j++) {
+        	auxArr[j].lock_p = &(auxArr[j].lock);
+        }
         assert(auxArr);
         global_auxArr = auxArr;
     }
@@ -489,52 +545,32 @@ computeGraph (void* argPtr)
                 }
             }
             if (k == GPtr->outVertexIndex[v]+GPtr->outDegree[v]) {
-                TM_SHORT_BEGIN
-					/* Add i to the impliedEdgeList of v */
-					long inDegree = (long)TM_SHARED_READ(GPtr->inDegree[v]);
-					TM_SHORT_WRITE(GPtr->inDegree[v], (inDegree + 1));
-					if (inDegree < MAX_CLUSTER_SIZE) {
-						TM_SHORT_WRITE(impliedEdgeList[v*MAX_CLUSTER_SIZE+inDegree],
-										(ULONGINT_T)i);
-					} else {
-						/* Use auxiliary array to store the implied edge */
-						/* Create an array if it's not present already */
-						ULONGINT_T* a = NULL;
-						if ((inDegree % MAX_CLUSTER_SIZE) == 0) {
-							a = (ULONGINT_T*)TM_MALLOC(MAX_CLUSTER_SIZE
-													   * sizeof(ULONGINT_T));
-							assert(a);
-							TM_SHORT_WRITE(auxArr[v], a);
-						} else {
-							a = auxArr[v];
-						}
-						TM_SHORT_WRITE(a[inDegree % MAX_CLUSTER_SIZE], (ULONGINT_T)i);
-					}
-				TM_SHORT_END
-				TM_LONG_BEGIN
-				TM_PART_BEGIN
-				//TODO split more here!!
-					/* Add i to the impliedEdgeList of v */
-					long inDegree = (long)TM_SHARED_READ(GPtr->inDegree[v]);
-					TM_SHARED_WRITE(GPtr->inDegree[v], (inDegree + 1));
-					if (inDegree < MAX_CLUSTER_SIZE) {
-						TM_SHARED_WRITE(impliedEdgeList[v*MAX_CLUSTER_SIZE+inDegree],
-										(ULONGINT_T)i);
-					} else {
-						/* Use auxiliary array to store the implied edge */
-						/* Create an array if it's not present already */
-						ULONGINT_T* a = NULL;
-						if ((inDegree % MAX_CLUSTER_SIZE) == 0) {
-							a = (ULONGINT_T*)TM_MALLOC(MAX_CLUSTER_SIZE
-													   * sizeof(ULONGINT_T));
-							assert(a);
-							TM_SHARED_WRITE_P(auxArr[v], a);
-						} else {
-							a = auxArr[v];
-						}
-						TM_SHARED_WRITE(a[inDegree % MAX_CLUSTER_SIZE], (ULONGINT_T)i);
-					}
-                TM_PART_END
+                TM_BEGIN();
+                /* Add i to the impliedEdgeList of v */
+                long inDegree = (long)TM_SHARED_READ(GPtr->inDegree[v]);
+                TM_SHARED_WRITE(GPtr->inDegree[v], (inDegree + 1));
+                if (inDegree < MAX_CLUSTER_SIZE) {
+                    TM_SHARED_WRITE(impliedEdgeList[v*MAX_CLUSTER_SIZE+inDegree],
+                                    (ULONGINT_T)i);
+                } else {
+                    /* Use auxiliary array to store the implied edge */
+                    /* Create an array if it's not present already */
+                	tm_obj<ULONGINT_T>* a = NULL;
+                    if ((inDegree % MAX_CLUSTER_SIZE) == 0) {
+                        a = (tm_obj<ULONGINT_T>*)TM_MALLOC(MAX_CLUSTER_SIZE
+                                                   * sizeof(tm_obj<ULONGINT_T>));
+                        assert(a);
+                        memset(a, 0, MAX_CLUSTER_SIZE
+                                                   * sizeof(tm_obj<ULONGINT_T>));
+                        for (int j=0; j < MAX_CLUSTER_SIZE; j++) {
+                        	a[j].lock_p = &(a[j].lock);
+                        }
+                        TM_SHARED_WRITE_P(auxArr[v], a);
+                    } else {
+                        a = auxArr[v].val;
+                    }
+                    TM_SHARED_WRITE(a[inDegree % MAX_CLUSTER_SIZE], (ULONGINT_T)i);
+                }
                 TM_END();
             }
         }
@@ -546,7 +582,7 @@ computeGraph (void* argPtr)
 
     if (myId == 0) {
         GPtr->numUndirectedEdges = GPtr->inVertexIndex[GPtr->numVertices-1]
-                                   + GPtr->inDegree[GPtr->numVertices-1];
+                                   + GPtr->inDegree[GPtr->numVertices-1].val;
         GPtr->inVertexList =
             (ULONGINT_T *)P_MALLOC(GPtr->numUndirectedEdges * sizeof(ULONGINT_T));
     }
@@ -559,15 +595,15 @@ computeGraph (void* argPtr)
 
     for (i = i_start; i < i_stop; i++) {
         for (j = GPtr->inVertexIndex[i];
-             j < (GPtr->inVertexIndex[i] + GPtr->inDegree[i]);
+             j < (GPtr->inVertexIndex[i] + GPtr->inDegree[i].val);
              j++)
         {
             if ((j - GPtr->inVertexIndex[i]) < MAX_CLUSTER_SIZE) {
                 GPtr->inVertexList[j] =
-                    impliedEdgeList[i*MAX_CLUSTER_SIZE+j-GPtr->inVertexIndex[i]];
+                    impliedEdgeList[i*MAX_CLUSTER_SIZE+j-GPtr->inVertexIndex[i]].val;
             } else {
                 GPtr->inVertexList[j] =
-                    auxArr[i][(j-GPtr->inVertexIndex[i]) % MAX_CLUSTER_SIZE];
+                    auxArr[i].val[(j-GPtr->inVertexIndex[i]) % MAX_CLUSTER_SIZE].val;
             }
         }
     }
@@ -579,8 +615,8 @@ computeGraph (void* argPtr)
     }
 
     for (i = i_start; i < i_stop; i++) {
-        if (GPtr->inDegree[i] > MAX_CLUSTER_SIZE) {
-            P_FREE(auxArr[i]);
+        if (GPtr->inDegree[i].val > MAX_CLUSTER_SIZE) {
+            P_FREE(auxArr[i].val);
         }
     }
 
@@ -591,14 +627,6 @@ computeGraph (void* argPtr)
     }
 
     TM_THREAD_EXIT();
-
-#ifdef	STATISTICS
-	TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 

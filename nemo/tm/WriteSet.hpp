@@ -25,14 +25,13 @@
 
 template <typename T>
 struct tm_obj {
-	volatile uint64_t ver;
-	volatile int lock;
+	volatile uint64_t ver = 0;
+	volatile int lock = 0;
 	volatile int* volatile lock_p;
 	T val;
-//	tm_obj() {
-//		this->lock_p = &(this->lock);
-//		printf("%x\n", this->lock_p);
-//	}
+	tm_obj() {
+		this->lock_p = &(this->lock);
+	}
 };
 
 namespace

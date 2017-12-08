@@ -62,7 +62,7 @@
  *
  * =============================================================================
  */
-
+#include "tm.h"
 
 #ifndef DEFS_H
 #define DEFS_H 1
@@ -108,7 +108,7 @@ typedef struct /*the graph data structure*/
     ULONGINT_T* outVertexList;
     ULONGINT_T* paralEdgeIndex;
 
-    LONGINT_T*  inDegree;
+    tm_obj<LONGINT_T>*  inDegree;
     ULONGINT_T* inVertexIndex;
     ULONGINT_T* inVertexList;
 

@@ -82,9 +82,6 @@
 
 MAIN(argc, argv)
 {
-	//tune to favor short transactions
-//	RETRY_SHORT = 5;
-
     GOTO_REAL();
 
     /*
@@ -193,7 +190,7 @@ MAIN(argc, argv)
     double time = TIMER_DIFF_SECONDS(start, stop);
     totalTime += time;
 
-    printf("\nTime taken for Scalable Data Generation is %9.6f sec.\n", time);
+    printf("\nTime taken for Scalable Data Generation is %9.6f sec.\n\n", time);
     printf("\n\tgenScalData() completed execution.\n");
 
 
@@ -489,7 +486,7 @@ MAIN(argc, argv)
 
 #endif /* ENABLE_KERNEL4 */
 
-    printf("\nTime taken for all is %9.6f sec\n\n", totalTime);
+    printf("\nTime taken for all is %9.6f sec.\n\n", totalTime);
 
     /* -------------------------------------------------------------------------
      * Cleanup

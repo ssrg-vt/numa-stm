@@ -88,8 +88,8 @@ static ULONGINT_T* global_edgeEndCounter       = NULL;
 static edge*       global_cutSet               = NULL;
 
 static long       global_iter;
-static ULONGINT_T global_cliqueSize = 0;
-static ULONGINT_T global_cutSetIndex = 0;
+static tm_obj<ULONGINT_T> global_cliqueSize ;
+static tm_obj<ULONGINT_T> global_cutSetIndex ;
 
 
 /* =============================================================================
@@ -99,11 +99,11 @@ static ULONGINT_T global_cutSetIndex = 0;
 void
 cutClusters (void* argPtr)
 {
-    TM_THREAD_ENTER();
+    long myId = thread_getId();
+    TM_THREAD_ENTER(myId, 0, 0);
 
     graph* GPtr = (graph*)argPtr;
 
-    long myId = thread_getId();
     long numThread = thread_getNumThread();
 
     /*
@@ -144,7 +144,7 @@ cutClusters (void* argPtr)
     createPartition(0, GPtr->numVertices, myId, numThread, &i_start, &i_stop);
 
     for (i = i_start; i < i_stop; i++) {
-        neighbourArray[i] = GPtr->inDegree[i] + GPtr->outDegree[i];
+        neighbourArray[i] = GPtr->inDegree[i].val + GPtr->outDegree[i];
         Index[i] = i;
     }
 
@@ -267,7 +267,7 @@ cutClusters (void* argPtr)
                                 clusterSize[t]++;
                             }
                         }
-                        for (j = 0; j < GPtr->inDegree[startV[t]]; j++) {
+                        for (j = 0; j < GPtr->inDegree[startV[t]].val; j++) {
                             long inVertexIndex = j+GPtr->inVertexIndex[startV[t]];
                             long vStatusIndex = GPtr->inVertexList[inVertexIndex];
                             if (vStatus[vStatusIndex] == -1) {
@@ -298,7 +298,7 @@ cutClusters (void* argPtr)
             cliqueSize = 1;
 
             /* clusterSize[myId] gives the no. of 'unassigned' vertices adjacent to the current vertex */
-            if ((clusterSize[myId] >= 0.6*(GPtr->inDegree[i]+GPtr->outDegree[i])) ||
+            if ((clusterSize[myId] >= 0.6*(GPtr->inDegree[i].val+GPtr->outDegree[i])) ||
                 ((iter > (GPtr->numVertices)/(numThread*MAX_CLUSTER_SIZE)) &&
                  (clusterSize[myId] > 0)))
             {
@@ -346,7 +346,7 @@ cutClusters (void* argPtr)
                         if ((cutSetCounter >= clusterCounter) ||
                             ((SCALE < 9) &&
                              (clusterCounter <= 2) &&
-                             (GPtr->inDegree[v]+GPtr->outDegree[v] >
+                             (GPtr->inDegree[v].val+GPtr->outDegree[v] >
                               clusterCounter + cutSetCounter) &&
                              (clusterSize[myId] > clusterCounter + 2)) ||
                             ((SCALE > 9) &&
@@ -366,7 +366,7 @@ cutClusters (void* argPtr)
 
                             cliqueSize++;
                              /* Add edges in inVertexList also to cut Set */
-                            for (k = 0; k < GPtr->inDegree[v]; k++) {
+                            for (k = 0; k < GPtr->inDegree[v].val; k++) {
                                 long inVertexListIndex = k+GPtr->inVertexIndex[v];
                                 long vStatusIndex = GPtr->inVertexList[inVertexListIndex];
                                 if (vStatus[vStatusIndex] == -1) {
@@ -383,7 +383,7 @@ cutClusters (void* argPtr)
                 }
 
                 /* Do the same for the implied edges too */
-                for (j = 0; j < GPtr->inDegree[i]; j++) {
+                for (j = 0; j < GPtr->inDegree[i].val; j++) {
 
                     ULONGINT_T clusterCounter = 0;
                     ULONGINT_T cutSetIndexPrev = cutSetIndex;
@@ -415,7 +415,7 @@ cutClusters (void* argPtr)
                         if ((cutSetCounter >= clusterCounter) ||
                             ((SCALE < 9) &&
                              (clusterCounter <= 2) &&
-                             (GPtr->inDegree[v]+GPtr->outDegree[v] >
+                             (GPtr->inDegree[v].val+GPtr->outDegree[v] >
                               clusterCounter + cutSetCounter)  &&
                              (clusterSize[myId] > clusterCounter + 2)) ||
                             ((SCALE > 9) &&
@@ -432,7 +432,7 @@ cutClusters (void* argPtr)
 
                             cliqueSize++;
                             /* Add edges in inVertexList also to cut Set */
-                            for (k = 0; k < GPtr->inDegree[v]; k++) {
+                            for (k = 0; k < GPtr->inDegree[v].val; k++) {
                                 long inVertexListIndex = k+GPtr->inVertexIndex[v];
                                 long vStatusIndex = GPtr->inVertexList[inVertexListIndex];
                                 if (vStatus[vStatusIndex] == -1) {
@@ -457,7 +457,7 @@ cutClusters (void* argPtr)
 
             } else {
 
-                if ((clusterSize[myId] < 0.6*(GPtr->inDegree[i]+GPtr->outDegree[i])) &&
+                if ((clusterSize[myId] < 0.6*(GPtr->inDegree[i].val+GPtr->outDegree[i])) &&
                     (iter <= GPtr->numVertices/(numThread*MAX_CLUSTER_SIZE)))
                 {
                     /* High perc. of intra-clique edges, do not commit clique */
@@ -473,7 +473,7 @@ cutClusters (void* argPtr)
                         }
                     }
 
-                    for (j=0; j<GPtr->inDegree[i]; j++) {
+                    for (j=0; j<GPtr->inDegree[i].val; j++) {
                         long inVertexListIndex = j+GPtr->inVertexIndex[i];
                         long vStatusIndex = GPtr->inVertexList[inVertexListIndex];
                         if (vStatus[vStatusIndex] == iter*numThread+myId) {
@@ -486,7 +486,7 @@ cutClusters (void* argPtr)
         } /* if i != -1 */
 
         if (myId == 0) {
-            global_cliqueSize = 0;
+            global_cliqueSize.val = 0;
         }
 
         thread_barrier_wait();
@@ -508,7 +508,7 @@ cutClusters (void* argPtr)
                                 fprintf(outfp1, "%lu ", vStatusIndex);
                             }
                         }
-                        for (j = 0; j < GPtr->inDegree[startV[t]]; j++) {
+                        for (j = 0; j < GPtr->inDegree[startV[t]].val; j++) {
                             long inVertexListIndex = j+GPtr->inVertexIndex[startV[t]];
                             long vStatusIndex = GPtr->inVertexList[inVertexListIndex];
                             if (vStatus[vStatusIndex] == iter*numThread+t) {
@@ -529,22 +529,15 @@ cutClusters (void* argPtr)
             global_iter = iter;
         }
 
-        long tmp_cliqueSize;
-        TM_SHORT_BEGIN
-			tmp_cliqueSize = (long)TM_SHARED_READ(global_cliqueSize);
-			TM_SHORT_WRITE(global_cliqueSize, (tmp_cliqueSize + cliqueSize));
-        TM_SHORT_END
-		TM_LONG_BEGIN
-		TM_PART_BEGIN
-			tmp_cliqueSize = (long)TM_SHARED_READ(global_cliqueSize);
-			TM_SHARED_WRITE(global_cliqueSize, (tmp_cliqueSize + cliqueSize));
-		TM_PART_END
+        TM_BEGIN();
+        long tmp_cliqueSize = (long)TM_SHARED_READ(global_cliqueSize);
+        TM_SHARED_WRITE(global_cliqueSize, (tmp_cliqueSize + cliqueSize));
         TM_END();
 
         thread_barrier_wait();
 
         iter = global_iter;
-        verticesVisited += global_cliqueSize;
+        verticesVisited += global_cliqueSize.val;
 
         if ((verticesVisited >= 0.95*GPtr->numVertices) ||
             (iter > GPtr->numVertices/2))
@@ -608,21 +601,14 @@ cutClusters (void* argPtr)
         }
     }
 
-    long tmp_cutSetIndex;
-    TM_SHORT_BEGIN
-		tmp_cutSetIndex = (long)TM_SHARED_READ(global_cutSetIndex);
-		TM_SHORT_WRITE(global_cutSetIndex, (tmp_cutSetIndex + cutSetIndex));
-    TM_SHORT_END
-	TM_LONG_BEGIN
-	TM_PART_BEGIN
-		tmp_cutSetIndex = (long)TM_SHARED_READ(global_cutSetIndex);
-		TM_SHARED_WRITE(global_cutSetIndex, (tmp_cutSetIndex + cutSetIndex));
-    TM_PART_END
+    TM_BEGIN();
+    long tmp_cutSetIndex = (long)TM_SHARED_READ(global_cutSetIndex);
+    TM_SHARED_WRITE(global_cutSetIndex, (tmp_cutSetIndex + cutSetIndex));
     TM_END();
 
     thread_barrier_wait();
 
-    cutSetIndex = global_cutSetIndex;
+    cutSetIndex = global_cutSetIndex.val;
     ULONGINT_T cutSetCounter = cutSetIndex;
 
     /* Data struct. for storing edgeCut */
@@ -673,13 +659,6 @@ cutClusters (void* argPtr)
     }
 
     TM_THREAD_EXIT();
-#ifdef	STATISTICS
-	TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 

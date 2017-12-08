@@ -78,15 +78,15 @@
 #include "thread.h"
 #include "tm.h"
 
-static ULONGINT_T* global_permV              = NULL;
+static tm_obj<ULONGINT_T>* global_permV              = NULL;
 static long*       global_cliqueSizes        = NULL;
 static long        global_totCliques         = 0;
 static ULONGINT_T* global_firstVsInCliques   = NULL;
 static ULONGINT_T* global_lastVsInCliques    = NULL;
 static ULONGINT_T* global_i_edgeStartCounter = NULL;
 static ULONGINT_T* global_i_edgeEndCounter   = NULL;
-static long        global_edgeNum            = 0;
-static ULONGINT_T  global_numStrWtEdges      = 0;
+static tm_obj<long>        global_edgeNum           ;
+static tm_obj<ULONGINT_T>  global_numStrWtEdges     ;
 static ULONGINT_T* global_startVertex        = NULL;
 static ULONGINT_T* global_endVertex          = NULL;
 static ULONGINT_T* global_tempIndex          = NULL;
@@ -765,11 +765,11 @@ genScalData_seq (graphSDG* SDGdataPtr)
 void
 genScalData (void* argPtr)
 {
-    TM_THREAD_ENTER();
+    long myId = thread_getId();
+    TM_THREAD_ENTER(myId, 0, 0);
 
     graphSDG* SDGdataPtr = (graphSDG*)argPtr;
 
-    long myId = thread_getId();
     long numThread = thread_getNumThread();
 
     /*
@@ -780,11 +780,15 @@ genScalData (void* argPtr)
     assert(stream);
     PRANDOM_SEED(stream, myId);
 
-    ULONGINT_T* permV; /* the vars associated with the graph tuple */
+    tm_obj<ULONGINT_T>* permV; /* the vars associated with the graph tuple */
 
     if (myId == 0) {
-        permV = (ULONGINT_T*)P_MALLOC(TOT_VERTICES * sizeof(ULONGINT_T));
+        permV = (tm_obj<ULONGINT_T>*)P_MALLOC(TOT_VERTICES * sizeof(tm_obj<ULONGINT_T>));
         assert(permV);
+        memset(permV, 0, TOT_VERTICES * sizeof(tm_obj<ULONGINT_T>));
+        for (int j=0; j < TOT_VERTICES; j++) {
+        	permV[j].lock_p = &(permV[j].lock);
+        }
         global_permV = permV;
     }
 
@@ -799,7 +803,7 @@ genScalData (void* argPtr)
 
     /* Initialize the array */
     for (i = i_start; i < i_stop; i++) {
-        permV[i] = i;
+        permV[i].val = i;
     }
 
     thread_barrier_wait();
@@ -808,17 +812,10 @@ genScalData (void* argPtr)
         long t1 = PRANDOM_GENERATE(stream);
         long t = i + t1 % (TOT_VERTICES - i);
         if (t != i) {
-            TM_SHORT_BEGIN
-            	ULONGINT_T t2 = (long)TM_SHARED_READ(permV[t]);
-				TM_SHORT_WRITE(permV[t], TM_SHARED_READ(permV[i]));
-				TM_SHORT_WRITE(permV[i], t2);
-            TM_SHORT_END
-			TM_LONG_BEGIN
-			TM_PART_BEGIN
-				ULONGINT_T t2 = (long)TM_SHARED_READ(permV[t]);
-				TM_SHARED_WRITE(permV[t], TM_SHARED_READ(permV[i]));
-				TM_SHARED_WRITE(permV[i], t2);
-            TM_PART_END
+            TM_BEGIN();
+            long t2 = (long)TM_SHARED_READ(permV[t]);
+            TM_SHARED_WRITE(permV[t], TM_SHARED_READ(permV[i]));
+            TM_SHARED_WRITE(permV[i], (ULONGINT_T)t2);
             TM_END();
         }
     }
@@ -921,7 +918,7 @@ genScalData (void* argPtr)
             fprintf(outfp, "Clq %lu - ", i);
             long j;
             for (j = firstVsInCliques[i]; j <= lastVsInCliques[i]; j++) {
-                fprintf(outfp, "%lu ", permV[j]);
+                fprintf(outfp, "%lu ", permV[j].val);
             }
             fprintf(outfp, "\n");
         }
@@ -1103,20 +1100,14 @@ genScalData (void* argPtr)
         }
     }
 
-    TM_SHORT_BEGIN
-    	TM_SHORT_WRITE(global_edgeNum,
-					((long)TM_SHARED_READ(global_edgeNum) + i_edgePtr));
-    TM_SHORT_END
-	TM_LONG_BEGIN
-	TM_PART_BEGIN
-		TM_SHARED_WRITE(global_edgeNum,
-						((long)TM_SHARED_READ(global_edgeNum) + i_edgePtr));
-    TM_PART_END
+    TM_BEGIN();
+    TM_SHARED_WRITE(global_edgeNum,
+                    ((long)TM_SHARED_READ(global_edgeNum) + i_edgePtr));
     TM_END();
 
     thread_barrier_wait();
 
-    long edgeNum = global_edgeNum;
+    long edgeNum = global_edgeNum.val;
 
     /*
      * Initialize edge list arrays
@@ -1315,7 +1306,7 @@ genScalData (void* argPtr)
     i_edgeStartCounter[myId] = 0;
 
     if (myId == 0) {
-        global_edgeNum = 0;
+        global_edgeNum.val = 0;
     }
 
     thread_barrier_wait();
@@ -1327,22 +1318,16 @@ genScalData (void* argPtr)
         }
     }
 
-    TM_SHORT_BEGIN
-    	TM_SHORT_WRITE(global_edgeNum,
-                        ((long)TM_SHARED_READ(global_edgeNum) + i_edgePtr));
-	TM_SHORT_END
-	TM_LONG_BEGIN
-	TM_PART_BEGIN
-    	TM_SHARED_WRITE(global_edgeNum,
+    TM_BEGIN();
+    TM_SHARED_WRITE(global_edgeNum,
                     ((long)TM_SHARED_READ(global_edgeNum) + i_edgePtr));
-    TM_PART_END
     TM_END();
 
 
     thread_barrier_wait();
 
-    edgeNum = global_edgeNum;
-    ULONGINT_T numEdgesPlacedOutside = global_edgeNum;
+    edgeNum = global_edgeNum.val;
+    ULONGINT_T numEdgesPlacedOutside = global_edgeNum.val;
 
     for (i = i_edgeStartCounter[myId]; i < i_edgeEndCounter[myId]; i++) {
         startVertex[i+numEdgesPlacedInCliques] = startV[i-i_edgeStartCounter[myId]];
@@ -1415,20 +1400,14 @@ genScalData (void* argPtr)
         }
     }
 
-    TM_SHORT_BEGIN
-    	TM_SHORT_WRITE(global_numStrWtEdges,
-                        ((long)TM_SHARED_READ(global_numStrWtEdges) + numStrWtEdges));
-	TM_SHORT_END
-	TM_LONG_BEGIN
-	TM_PART_BEGIN
-		TM_SHARED_WRITE(global_numStrWtEdges,
+    TM_BEGIN();
+    TM_SHARED_WRITE(global_numStrWtEdges,
                     ((long)TM_SHARED_READ(global_numStrWtEdges) + numStrWtEdges));
-    TM_PART_END
     TM_END();
 
     thread_barrier_wait();
 
-    numStrWtEdges = global_numStrWtEdges;
+    numStrWtEdges = global_numStrWtEdges.val;
 
     if (myId == 0) {
         SDGdataPtr->strWeight =
@@ -1477,8 +1456,8 @@ genScalData (void* argPtr)
      */
 
     for (i = i_start; i < i_stop; i++) {
-        startVertex[i] = permV[(startVertex[i])];
-        endVertex[i] = permV[(endVertex[i])];
+        startVertex[i] = permV[(startVertex[i])].val;
+        endVertex[i] = permV[(endVertex[i])].val;
     }
 
     thread_barrier_wait();
@@ -1668,13 +1647,6 @@ genScalData (void* argPtr)
     }
 
     TM_THREAD_EXIT();
-#ifdef	STATISTICS
-	TM_TX_VAR
-	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 
