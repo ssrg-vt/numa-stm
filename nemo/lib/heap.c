@@ -76,9 +76,9 @@
 #include "types.h"
 
 struct heap {
-    void** elements;
-    long size;
-    long capacity;
+	tm_obj<tm_obj<void*>*> elements;
+	tm_obj<long> size;
+	tm_obj<long> capacity;
     long (*compare)(const void*, const void*);
 };
 
@@ -114,10 +114,23 @@ heap_alloc (long initCapacity, long (*compare)(const void*, const void*))
     heapPtr = (heap_t*)malloc(sizeof(heap_t));
     if (heapPtr) {
         long capacity = ((initCapacity > 0) ? (initCapacity) : (1));
-        heapPtr->elements = (void**)malloc(capacity * sizeof(void*));
-        assert(heapPtr->elements);
-        heapPtr->size = 0;
-        heapPtr->capacity = capacity;
+        heapPtr->elements.val = (tm_obj<void*>*)malloc(capacity * sizeof(tm_obj<void*>));
+        assert(heapPtr->elements.val);
+        heapPtr->elements.lock_p = &(heapPtr->elements.lock);
+        heapPtr->elements.lock = 0;
+        heapPtr->elements.ver = 0;
+        memset(heapPtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+        for (int i=0; i < capacity; i++) {
+        	heapPtr->elements.val[i].lock_p = &(heapPtr->elements.val[i].lock);
+        }
+        heapPtr->size.val = 0;
+        heapPtr->size.lock_p = &(heapPtr->size.lock);
+        heapPtr->size.lock = 0;
+        heapPtr->size.ver = 0;
+        heapPtr->capacity.val = capacity;
+        heapPtr->capacity.lock_p = &(heapPtr->capacity.lock);
+        heapPtr->capacity.lock = 0;
+        heapPtr->capacity.ver = 0;
         heapPtr->compare = compare;
     }
 
@@ -132,7 +145,7 @@ heap_alloc (long initCapacity, long (*compare)(const void*, const void*))
 void
 heap_free (heap_t* heapPtr)
 {
-    free(heapPtr->elements);
+    free(heapPtr->elements.val);
     free(heapPtr);
 }
 
@@ -144,20 +157,20 @@ heap_free (heap_t* heapPtr)
 static void
 siftUp (heap_t* heapPtr, long startIndex)
 {
-    void** elements = heapPtr->elements;
+    tm_obj<void*>* elements = heapPtr->elements.val;
     long (*compare)(const void*, const void*) = heapPtr->compare;
 
     long index = startIndex;
     while ((index > 1)) {
         long parentIndex = PARENT(index);
-        void* parentPtr = elements[parentIndex];
-        void* thisPtr   = elements[index];
+        void* parentPtr = elements[parentIndex].val;
+        void* thisPtr   = elements[index].val;
         if (compare(parentPtr, thisPtr) >= 0) {
             break;
         }
         void* tmpPtr = parentPtr;
-        elements[parentIndex] = thisPtr;
-        elements[index] = tmpPtr;
+        elements[parentIndex].val = thisPtr;
+        elements[index].val = tmpPtr;
         index = parentIndex;
     }
 }
@@ -170,7 +183,7 @@ siftUp (heap_t* heapPtr, long startIndex)
 static void
 TMsiftUp (TM_ARGDECL  heap_t* heapPtr, long startIndex)
 {
-    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
+	tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(heapPtr->elements);
     long (*compare)(const void*, const void*) = heapPtr->compare;
 
     long index = startIndex;
@@ -197,27 +210,31 @@ TMsiftUp (TM_ARGDECL  heap_t* heapPtr, long startIndex)
 bool_t
 heap_insert (heap_t* heapPtr, void* dataPtr)
 {
-    long size = heapPtr->size;
-    long capacity = heapPtr->capacity;
+    long size = heapPtr->size.val;
+    long capacity = heapPtr->capacity.val;
 
     if ((size + 1) >= capacity) {
         long newCapacity = capacity * 2;
-        void** newElements = (void**)malloc(newCapacity * sizeof(void*));
+        tm_obj<void*>* newElements = (tm_obj<void*>*)malloc(newCapacity * sizeof(tm_obj<void*>));
         if (newElements == NULL) {
             return FALSE;
         }
-        heapPtr->capacity = newCapacity;
+        memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+		for (int i=0; i < newCapacity; i++) {
+			newElements[i].lock_p = &(newElements[i].lock);
+		}
+        heapPtr->capacity.val = newCapacity;
         long i;
-        void** elements = heapPtr->elements;
+        tm_obj<void*>* elements = heapPtr->elements.val;
         for (i = 0; i <= size; i++) {
-            newElements[i] = elements[i];
+            newElements[i].val = elements[i].val;
         }
-        free(heapPtr->elements);
-        heapPtr->elements = newElements;
+        free(heapPtr->elements.val);
+        heapPtr->elements.val = newElements;
     }
 
-    size = ++(heapPtr->size);
-    heapPtr->elements[size] = dataPtr;
+    size = ++(heapPtr->size.val);
+    heapPtr->elements.val[size].val = dataPtr;
     siftUp(heapPtr, size);
 
     return TRUE;
@@ -237,23 +254,27 @@ TMheap_insert (TM_ARGDECL  heap_t* heapPtr, void* dataPtr)
 
     if ((size + 1) >= capacity) {
         long newCapacity = capacity * 2;
-        void** newElements = (void**)TM_MALLOC(newCapacity * sizeof(void*));
+        tm_obj<void*>* newElements = (tm_obj<void*>*)malloc(newCapacity * sizeof(tm_obj<void*>));
         if (newElements == NULL) {
             return FALSE;
         }
+        memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+		for (int i=0; i < newCapacity; i++) {
+			newElements[i].lock_p = &(newElements[i].lock);
+		}
         TM_SHARED_WRITE(heapPtr->capacity, newCapacity);
         long i;
-        void** elements = TM_SHARED_READ_P(heapPtr->elements);
+        tm_obj<void*>* elements = TM_SHARED_READ_P(heapPtr->elements);
         for (i = 0; i <= size; i++) {
-            newElements[i] = (void*)TM_SHARED_READ_P(elements[i]);
+            newElements[i].val = (void*)TM_SHARED_READ_P(elements[i]);
         }
-        TM_FREE(heapPtr->elements);
+        TM_FREE(heapPtr->elements.val);
         TM_SHARED_WRITE(heapPtr->elements, newElements);
     }
 
     size++;
     TM_SHARED_WRITE(heapPtr->size, size);
-    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
+    tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(heapPtr->elements);
     TM_SHARED_WRITE_P(elements[size], dataPtr);
     TMsiftUp(TM_ARG  heapPtr, size);
 
@@ -268,10 +289,10 @@ TMheap_insert (TM_ARGDECL  heap_t* heapPtr, void* dataPtr)
 static void
 heapify (heap_t* heapPtr, long startIndex)
 {
-    void** elements = heapPtr->elements;
+	tm_obj<void*>* elements = heapPtr->elements.val;
     long (*compare)(const void*, const void*) = heapPtr->compare;
 
-    long size = heapPtr->size;
+    long size = heapPtr->size.val;
     long index = startIndex;
 
     while (1) {
@@ -281,7 +302,7 @@ heapify (heap_t* heapPtr, long startIndex)
         long maxIndex = -1;
 
         if ((leftIndex <= size) &&
-            (compare(elements[leftIndex], elements[index]) > 0))
+            (compare(elements[leftIndex].val, elements[index].val) > 0))
         {
             maxIndex = leftIndex;
         } else {
@@ -289,7 +310,7 @@ heapify (heap_t* heapPtr, long startIndex)
         }
 
         if ((rightIndex <= size) &&
-            (compare(elements[rightIndex], elements[maxIndex]) > 0))
+            (compare(elements[rightIndex].val, elements[maxIndex].val) > 0))
         {
             maxIndex = rightIndex;
         }
@@ -297,9 +318,9 @@ heapify (heap_t* heapPtr, long startIndex)
         if (maxIndex == index) {
             break;
         } else {
-            void* tmpPtr = elements[index];
-            elements[index] = elements[maxIndex];
-            elements[maxIndex] = tmpPtr;
+            void* tmpPtr = elements[index].val;
+            elements[index].val = elements[maxIndex].val;
+            elements[maxIndex].val = tmpPtr;
             index = maxIndex;
         }
     }
@@ -313,7 +334,7 @@ heapify (heap_t* heapPtr, long startIndex)
 static void
 TMheapify (TM_ARGDECL  heap_t* heapPtr, long startIndex)
 {
-    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
+	tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(heapPtr->elements);
     long (*compare)(const void*, const void*) = heapPtr->compare;
 
     long size = (long)TM_SHARED_READ(heapPtr->size);
@@ -363,16 +384,16 @@ TMheapify (TM_ARGDECL  heap_t* heapPtr, long startIndex)
 void*
 heap_remove (heap_t* heapPtr)
 {
-    long size = heapPtr->size;
+    long size = heapPtr->size.val;
 
     if (size < 1) {
         return NULL;
     }
 
-    void** elements = heapPtr->elements;
-    void* dataPtr = elements[1];
-    elements[1] = elements[size];
-    heapPtr->size = size - 1;
+    tm_obj<void*>* elements = heapPtr->elements.val;
+    void* dataPtr = elements[1].val;
+    elements[1].val = elements[size].val;
+    heapPtr->size.val = size - 1;
     heapify(heapPtr, 1);
 
     return dataPtr;
@@ -393,7 +414,7 @@ TMheap_remove (TM_ARGDECL  heap_t* heapPtr)
         return NULL;
     }
 
-    void** elements = (void**)TM_SHARED_READ_P(heapPtr->elements);
+    tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(heapPtr->elements);
     void* dataPtr = (void*)TM_SHARED_READ_P(elements[1]);
     TM_SHARED_WRITE_P(elements[1], TM_SHARED_READ_P(elements[size]));
     TM_SHARED_WRITE(heapPtr->size, (size - 1));
@@ -410,13 +431,13 @@ TMheap_remove (TM_ARGDECL  heap_t* heapPtr)
 bool_t
 heap_isValid (heap_t* heapPtr)
 {
-    long size = heapPtr->size;
+    long size = heapPtr->size.val;
     long (*compare)(const void*, const void*) = heapPtr->compare;
-    void** elements = heapPtr->elements;
+    tm_obj<void*>* elements = heapPtr->elements.val;
 
     long i;
     for (i = 1; i < size; i++) {
-        if (compare(elements[i+1], elements[PARENT(i+1)]) > 0) {
+        if (compare(elements[i+1].val, elements[PARENT(i+1)].val) > 0) {
             return FALSE;
         }
     }

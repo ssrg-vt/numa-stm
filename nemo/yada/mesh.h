@@ -115,9 +115,6 @@ void
 TMmesh_insert (TM_ARGDECL
                mesh_t* meshPtr, element_t* elementPtr, MAP_T* edgeMapPtr);
 
-void
-TMmesh_insert_s (TM_ARGDECL
-               mesh_t* meshPtr, element_t* elementPtr, MAP_T* edgeMapPtr);
 
 /* =============================================================================
  * TMmesh_remove
@@ -127,12 +124,7 @@ TM_CALLABLE
 void
 TMmesh_remove (TM_ARGDECL  mesh_t* meshPtr, element_t* elementPtr);
 
-TM_CALLABLE
-void
-TMmesh_remove_s (TM_ARGDECL  mesh_t* meshPtr, element_t* elementPtr);
 
-void
-mesh_remove_seq (mesh_t* meshPtr, element_t* elementPtr);
 /* =============================================================================
  * TMmesh_insertBoundary
  * =============================================================================
@@ -140,12 +132,7 @@ mesh_remove_seq (mesh_t* meshPtr, element_t* elementPtr);
 bool_t
 TMmesh_insertBoundary (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr);
 
-bool_t
-TMmesh_insertBoundary_s (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr);
 
-
-bool_t
-mesh_insertBoundary_seq (mesh_t* meshPtr, edge_t* boundaryPtr);
 /* =============================================================================
  * TMmesh_removeBoundary
  * =============================================================================
@@ -153,11 +140,7 @@ mesh_insertBoundary_seq (mesh_t* meshPtr, edge_t* boundaryPtr);
 bool_t
 TMmesh_removeBoundary (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr);
 
-bool_t
-TMmesh_removeBoundary_s (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr);
 
-bool_t
-mesh_removeBoundary_seq (mesh_t* meshPtr, edge_t* boundaryPtr);
 /* =============================================================================
  * mesh_read
  *
@@ -196,13 +179,10 @@ mesh_check (mesh_t* meshPtr, long expectedNumElement);
 
 
 #define TMMESH_INSERT(m, e, em)         TMmesh_insert(TM_ARG  m, e, em)
-#define TMMESH_INSERT_S(m, e, em)         TMmesh_insert_s(TM_ARG  m, e, em)
 #define TMMESH_REMOVE(m, e)             TMmesh_remove(TM_ARG  m, e)
-#define TMMESH_REMOVE_S(m, e)             TMmesh_remove_s(TM_ARG  m, e)
 #define TMMESH_INSERTBOUNDARY(m, b)     TMmesh_insertBoundary(TM_ARG  m, b)
-#define TMMESH_INSERTBOUNDARY_S(m, b)     TMmesh_insertBoundary_s(TM_ARG  m, b)
 #define TMMESH_REMOVEBOUNDARY(m, b)     TMmesh_removeBoundary(TM_ARG  m, b)
-#define TMMESH_REMOVEBOUNDARY_S(m, b)     TMmesh_removeBoundary_s(TM_ARG  m, b)
+
 
 #endif /* MESH_H */
 

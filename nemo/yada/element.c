@@ -94,8 +94,8 @@ struct element {
     edge_t* encroachedEdgePtr; /* opposite obtuse angle */
     bool_t isSkinny;
     list_t* neighborListPtr;
-    bool_t isGarbage;
-    bool_t isReferenced;
+    tm_obj<bool_t> isGarbage;
+    tm_obj<bool_t> isReferenced;
 };
 
 
@@ -150,7 +150,7 @@ checkAngles (element_t* elementPtr)
     double minAngle = 180.0;
 
     assert(numCoordinate == 2 || numCoordinate == 3);
-    elementPtr->isReferenced = FALSE;
+    elementPtr->isReferenced.val = FALSE;
     elementPtr->isSkinny = FALSE;
     elementPtr->encroachedEdgePtr = NULL;
 
@@ -391,8 +391,14 @@ element_alloc (coordinate_t* coordinates, long numCoordinate)
         initEdges(elementPtr, coordinates, numCoordinate);
         elementPtr->neighborListPtr = list_alloc(element_listCompare);
         assert(elementPtr->neighborListPtr);
-        elementPtr->isGarbage = FALSE;
-        elementPtr->isReferenced = FALSE;
+        elementPtr->isGarbage.val = FALSE;
+        elementPtr->isGarbage.lock_p = &(elementPtr->isGarbage.lock);
+        elementPtr->isGarbage.lock = 0;
+        elementPtr->isGarbage.ver = 0;
+        elementPtr->isReferenced.val = FALSE;
+        elementPtr->isReferenced.lock_p = &(elementPtr->isReferenced.lock);
+        elementPtr->isReferenced.lock = 0;
+        elementPtr->isReferenced.ver = 0;
     }
 
     return elementPtr;
@@ -423,8 +429,14 @@ Pelement_alloc (coordinate_t* coordinates, long numCoordinate)
         initEdges(elementPtr, coordinates, numCoordinate);
         elementPtr->neighborListPtr = PLIST_ALLOC(element_listCompare);
         assert(elementPtr->neighborListPtr);
-        elementPtr->isGarbage = FALSE;
-        elementPtr->isReferenced = FALSE;
+        elementPtr->isGarbage.val = FALSE;
+        elementPtr->isGarbage.lock_p = &(elementPtr->isGarbage.lock);
+        elementPtr->isGarbage.lock = 0;
+        elementPtr->isGarbage.ver = 0;
+        elementPtr->isReferenced.val = FALSE;
+        elementPtr->isReferenced.lock_p = &(elementPtr->isReferenced.lock);
+        elementPtr->isReferenced.lock = 0;
+        elementPtr->isReferenced.ver = 0;
     }
 
     return elementPtr;
@@ -455,8 +467,14 @@ TMelement_alloc (TM_ARGDECL  coordinate_t* coordinates, long numCoordinate)
         initEdges(elementPtr, coordinates, numCoordinate);
         elementPtr->neighborListPtr = TMLIST_ALLOC(element_listCompare);
         assert(elementPtr->neighborListPtr);
-        elementPtr->isGarbage = FALSE;
-        elementPtr->isReferenced = FALSE;
+        elementPtr->isGarbage.val = FALSE;
+        elementPtr->isGarbage.lock_p = &(elementPtr->isGarbage.lock);
+        elementPtr->isGarbage.lock = 0;
+        elementPtr->isGarbage.ver = 0;
+        elementPtr->isReferenced.val = FALSE;
+        elementPtr->isReferenced.lock_p = &(elementPtr->isReferenced.lock);
+        elementPtr->isReferenced.lock = 0;
+        elementPtr->isReferenced.ver = 0;
     }
 
     return elementPtr;
@@ -683,7 +701,7 @@ element_isBad (element_t* elementPtr)
 bool_t
 element_isReferenced (element_t* elementPtr)
 {
-    return elementPtr->isReferenced;
+    return elementPtr->isReferenced.val;
 }
 
 
@@ -706,7 +724,7 @@ TMelement_isReferenced (TM_ARGDECL  element_t* elementPtr)
 void
 element_setIsReferenced (element_t* elementPtr, bool_t status)
 {
-    elementPtr->isReferenced = status;
+    elementPtr->isReferenced.val = status;
 }
 
 
@@ -720,11 +738,6 @@ TMelement_setIsReferenced (TM_ARGDECL  element_t* elementPtr, bool_t status)
     TM_SHARED_WRITE(elementPtr->isReferenced, status);
 }
 
-void
-TMelement_setIsReferenced_s (TM_ARGDECL  element_t* elementPtr, bool_t status)
-{
-    TM_SHORT_WRITE(elementPtr->isReferenced, status);
-}
 
 /* =============================================================================
  * element_isGarbage
@@ -734,7 +747,7 @@ TMelement_setIsReferenced_s (TM_ARGDECL  element_t* elementPtr, bool_t status)
 bool_t
 element_isGarbage (element_t* elementPtr)
 {
-    return elementPtr->isGarbage;
+    return elementPtr->isGarbage.val;
 }
 
 
@@ -757,7 +770,7 @@ TMelement_isGarbage (TM_ARGDECL  element_t* elementPtr)
 void
 element_setIsGarbage (element_t* elementPtr, bool_t status)
 {
-    elementPtr->isGarbage = status;
+    elementPtr->isGarbage.val = status;
 }
 
 
@@ -771,11 +784,6 @@ TMelement_setIsGarbage (TM_ARGDECL  element_t* elementPtr, bool_t status)
     TM_SHARED_WRITE(elementPtr->isGarbage, status);
 }
 
-void
-TMelement_setIsGarbage_s (TM_ARGDECL  element_t* elementPtr, bool_t status)
-{
-    TM_SHORT_WRITE(elementPtr->isGarbage, status);
-}
 
 /* =============================================================================
  * element_addNeighbor
@@ -799,11 +807,6 @@ TMelement_addNeighbor (TM_ARGDECL  element_t* elementPtr, element_t* neighborPtr
     TMLIST_INSERT(elementPtr->neighborListPtr, (void*)neighborPtr);
 }
 
-void
-TMelement_addNeighbor_s (TM_ARGDECL  element_t* elementPtr, element_t* neighborPtr)
-{
-    TMLIST_INSERT_S(elementPtr->neighborListPtr, (void*)neighborPtr);
-}
 
 /* =============================================================================
  * element_getNeighborListPtr

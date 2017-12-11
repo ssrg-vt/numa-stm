@@ -86,7 +86,7 @@
 
 
 struct mesh {
-    element_t* rootElementPtr;
+    tm_obj<element_t*> rootElementPtr;
     queue_t* initBadQueuePtr;
     long size;
     SET_T* boundarySetPtr;
@@ -103,7 +103,10 @@ mesh_alloc ()
     mesh_t* meshPtr = (mesh_t*)malloc(sizeof(mesh_t));
 
     if (meshPtr) {
-        meshPtr->rootElementPtr = NULL;
+        meshPtr->rootElementPtr.val = NULL;
+        meshPtr->rootElementPtr.lock_p = &(meshPtr->rootElementPtr.lock);
+        meshPtr->rootElementPtr.lock = 0;
+		meshPtr->rootElementPtr.ver = 0;
         meshPtr->initBadQueuePtr = queue_alloc(-1);
         assert(meshPtr->initBadQueuePtr);
         meshPtr->size = 0;
@@ -140,8 +143,8 @@ mesh_insert (mesh_t* meshPtr, element_t* elementPtr, MAP_T* edgeMapPtr)
      * The root element is not needed for the actual refining, but rather
      * for checking the validity of the final mesh.
      */
-    if (!meshPtr->rootElementPtr) {
-        meshPtr->rootElementPtr = elementPtr;
+    if (!meshPtr->rootElementPtr.val) {
+        meshPtr->rootElementPtr.val = elementPtr;
     }
 
     /*
@@ -165,9 +168,6 @@ mesh_insert (mesh_t* meshPtr, element_t* elementPtr, MAP_T* edgeMapPtr)
              */
             bool_t isSuccess;
             element_t* sharerPtr = (element_t*)MAP_FIND(edgeMapPtr, edgePtr);
-            if (! sharerPtr) {
-                return;
-            }
             assert(sharerPtr); /* cannot be shared by >2 elements */
             element_addNeighbor(elementPtr, sharerPtr);
             element_addNeighbor(sharerPtr, elementPtr);
@@ -229,9 +229,6 @@ TMmesh_insert (TM_ARGDECL
              */
             bool_t isSuccess;
             element_t* sharerPtr = (element_t*)MAP_FIND(edgeMapPtr, edgePtr);
-            if (! sharerPtr) {
-                return;
-            }
             assert(sharerPtr); /* cannot be shared by >2 elements */
             TMELEMENT_ADDNEIGHBOR(elementPtr, sharerPtr);
             TMELEMENT_ADDNEIGHBOR(sharerPtr, elementPtr);
@@ -257,66 +254,6 @@ TMmesh_insert (TM_ARGDECL
 }
 
 
-
-void
-TMmesh_insert_s (TM_ARGDECL
-               mesh_t* meshPtr, element_t* elementPtr, MAP_T* edgeMapPtr)
-{
-    /*
-     * Assuming fully connected graph, we just need to record one element.
-     * The root element is not needed for the actual refining, but rather
-     * for checking the validity of the final mesh.
-     */
-    if (!TM_SHARED_READ_P(meshPtr->rootElementPtr)) {
-        TM_SHORT_WRITE(meshPtr->rootElementPtr, elementPtr);
-    }
-
-    /*
-     * Record existence of each of this element's edges
-     */
-    long i;
-    long numEdge = element_getNumEdge(elementPtr);
-    for (i = 0; i < numEdge; i++) {
-        edge_t* edgePtr = element_getEdge(elementPtr, i);
-        if (!MAP_CONTAINS(edgeMapPtr, (void*)edgePtr)) {
-            /* Record existance of this edge */
-            bool_t isSuccess;
-            isSuccess =
-                PMAP_INSERT(edgeMapPtr, (void*)edgePtr, (void*)elementPtr);
-            assert(isSuccess);
-        } else {
-            /*
-             * Shared edge; update each element's neighborList
-             */
-            bool_t isSuccess;
-            element_t* sharerPtr = (element_t*)MAP_FIND(edgeMapPtr, edgePtr);
-            if (! sharerPtr) {
-                return;
-            }
-            assert(sharerPtr); /* cannot be shared by >2 elements */
-            TMELEMENT_ADDNEIGHBOR_S(elementPtr, sharerPtr);
-            TMELEMENT_ADDNEIGHBOR_S(sharerPtr, elementPtr);
-            isSuccess = PMAP_REMOVE(edgeMapPtr, edgePtr);
-            assert(isSuccess);
-            isSuccess = PMAP_INSERT(edgeMapPtr,
-                                    edgePtr,
-                                    NULL); /* marker to check >2 sharers */
-            assert(isSuccess);
-        }
-    }
-
-    /*
-     * Check if really encroached
-     */
-
-    edge_t* encroachedPtr = element_getEncroachedPtr(elementPtr);
-    if (encroachedPtr) {
-        if (!TMSET_CONTAINS(meshPtr->boundarySetPtr, encroachedPtr)) {
-            element_clearEncroached(elementPtr);
-        }
-    }
-}
-
 /* =============================================================================
  * TMmesh_remove
  * =============================================================================
@@ -324,9 +261,6 @@ TMmesh_insert_s (TM_ARGDECL
 void
 TMmesh_remove (TM_ARGDECL  mesh_t* meshPtr, element_t* elementPtr)
 {
-    if (TMELEMENT_ISGARBAGE(elementPtr)) {
-        return;
-    }
     assert(!TMELEMENT_ISGARBAGE(elementPtr));
 
     /*
@@ -358,80 +292,6 @@ TMmesh_remove (TM_ARGDECL  mesh_t* meshPtr, element_t* elementPtr)
     }
 }
 
-void
-TMmesh_remove_s (TM_ARGDECL  mesh_t* meshPtr, element_t* elementPtr)
-{
-    if (TMELEMENT_ISGARBAGE(elementPtr)) {
-        return;
-    }
-    assert(!TMELEMENT_ISGARBAGE(elementPtr));
-
-    /*
-     * If removing root, a new root is selected on the next mesh_insert, which
-     * always follows a call a mesh_remove.
-     */
-    if ((element_t*)TM_SHARED_READ_P(meshPtr->rootElementPtr) == elementPtr) {
-        TM_SHORT_WRITE(meshPtr->rootElementPtr, (element_t*)NULL);
-    }
-
-    /*
-     * Remove from neighbors
-     */
-    list_iter_t it;
-    list_t* neighborListPtr = element_getNeighborListPtr(elementPtr);
-    TMLIST_ITER_RESET(&it, neighborListPtr);
-    while (TMLIST_ITER_HASNEXT(&it, neighborListPtr)) {
-        element_t* neighborPtr =
-            (element_t*)TMLIST_ITER_NEXT(&it, neighborListPtr);
-        list_t* neighborNeighborListPtr = element_getNeighborListPtr(neighborPtr);
-        bool_t status = TMLIST_REMOVE_S(neighborNeighborListPtr, elementPtr);
-        assert(status);
-    }
-
-    TMELEMENT_SETISGARBAGE_S(elementPtr, TRUE);
-
-    if (!TMELEMENT_ISREFERENCED(elementPtr)) {
-        TMELEMENT_FREE(elementPtr);
-    }
-}
-
-
-void
-mesh_remove_seq (mesh_t* meshPtr, element_t* elementPtr)
-{
-    if (element_isGarbage(elementPtr)) {
-        return;
-    }
-//    assert(!TMELEMENT_ISGARBAGE(elementPtr));
-
-    /*
-     * If removing root, a new root is selected on the next mesh_insert, which
-     * always follows a call a mesh_remove.
-     */
-    if ((element_t*)(meshPtr->rootElementPtr) == elementPtr) {
-        meshPtr->rootElementPtr =  (element_t*)NULL;
-    }
-
-    /*
-     * Remove from neighbors
-     */
-    list_iter_t it;
-    list_t* neighborListPtr = element_getNeighborListPtr(elementPtr);
-    list_iter_reset(&it, neighborListPtr);
-    while (list_iter_hasNext(&it, neighborListPtr)) {
-        element_t* neighborPtr =
-            (element_t*)list_iter_next(&it, neighborListPtr);
-        list_t* neighborNeighborListPtr = element_getNeighborListPtr(neighborPtr);
-        bool_t status = list_remove(neighborNeighborListPtr, elementPtr);
-        assert(status);
-    }
-
-    element_setIsGarbage(elementPtr, TRUE);
-
-    if (!element_isReferenced(elementPtr)) {
-        TMELEMENT_FREE(elementPtr);
-    }
-}
 
 /* =============================================================================
  * TMmesh_insertBoundary
@@ -441,18 +301,6 @@ bool_t
 TMmesh_insertBoundary (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr)
 {
     return TMSET_INSERT(meshPtr->boundarySetPtr, boundaryPtr);
-}
-
-bool_t
-TMmesh_insertBoundary_s (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr)
-{
-    return TMSET_INSERT_S(meshPtr->boundarySetPtr, boundaryPtr);
-}
-
-bool_t
-mesh_insertBoundary_seq (mesh_t* meshPtr, edge_t* boundaryPtr)
-{
-    return SET_INSERT(meshPtr->boundarySetPtr, boundaryPtr);
 }
 
 
@@ -466,18 +314,6 @@ TMmesh_removeBoundary (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr)
     return TMSET_REMOVE(meshPtr->boundarySetPtr, boundaryPtr);
 }
 
-bool_t
-TMmesh_removeBoundary_s (TM_ARGDECL  mesh_t* meshPtr, edge_t* boundaryPtr)
-{
-    return TMSET_REMOVE_S(meshPtr->boundarySetPtr, boundaryPtr);
-}
-
-
-bool_t
-mesh_removeBoundary_seq (mesh_t* meshPtr, edge_t* boundaryPtr)
-{
-    return SET_REMOVE(meshPtr->boundarySetPtr, boundaryPtr);
-}
 
 /* =============================================================================
  * createElement
@@ -684,8 +520,8 @@ mesh_check (mesh_t* meshPtr, long expectedNumElement)
     /*
      * Do breadth-first search starting from rootElementPtr
      */
-    assert(meshPtr->rootElementPtr);
-    queue_push(searchQueuePtr, (void*)meshPtr->rootElementPtr);
+    assert(meshPtr->rootElementPtr.val);
+    queue_push(searchQueuePtr, (void*)meshPtr->rootElementPtr.val);
     while (!queue_isEmpty(searchQueuePtr)) {
 
         element_t* currentElementPtr;

@@ -92,8 +92,8 @@ long     global_numThread       = PARAM_DEFAULT_NUMTHREAD;
 double   global_angleConstraint = PARAM_DEFAULT_ANGLE;
 mesh_t*  global_meshPtr;
 heap_t*  global_workHeapPtr;
-long     global_totalNumAdded = 0;
-long     global_numProcess    = 0;
+tm_obj<long>     global_totalNumAdded;
+tm_obj<long>     global_numProcess   ;
 
 
 /* =============================================================================
@@ -189,7 +189,8 @@ initializeWork (heap_t* workHeapPtr, mesh_t* meshPtr)
 void
 process ()
 {
-    TM_THREAD_ENTER();
+    long threadId = thread_getId();
+    TM_THREAD_ENTER(threadId, 0, 0);
 
     heap_t* workHeapPtr = global_workHeapPtr;
     mesh_t* meshPtr = global_meshPtr;
@@ -204,27 +205,17 @@ process ()
 
         element_t* elementPtr;
 
-        TM_SHORT_BEGIN
-        elementPtr = TMHEAP_REMOVE_S(workHeapPtr);
-        TM_SHORT_END
-        TM_LONG_BEGIN
+        TM_BEGIN();
         elementPtr = TMHEAP_REMOVE(workHeapPtr);
         TM_END();
-
         if (elementPtr == NULL) {
             break;
         }
 
         bool_t isGarbage;
-        //no more splitting
-        TM_SHORT_BEGIN
-        isGarbage = TMELEMENT_ISGARBAGE(elementPtr);
-        TM_SHORT_END
-        TM_GL_BEGIN
+        TM_BEGIN();
         isGarbage = TMELEMENT_ISGARBAGE(elementPtr);
         TM_END();
-
-
         if (isGarbage) {
             /*
              * Handle delayed deallocation
@@ -235,25 +226,15 @@ process ()
 
         long numAdded;
 
-        TM_SHORT_BEGIN
-        PREGION_CLEARBAD(regionPtr);
-        numAdded = TMREGION_REFINE_S(regionPtr, elementPtr, meshPtr);
-        TM_SHORT_END
-        TM_LONG_BEGIN
+        TM_BEGIN();
         PREGION_CLEARBAD(regionPtr);
         numAdded = TMREGION_REFINE(regionPtr, elementPtr, meshPtr);
         TM_END();
 
-        //no more splitting
-        TM_SHORT_BEGIN
-        TMELEMENT_SETISREFERENCED_S(elementPtr, FALSE);
-        isGarbage = TMELEMENT_ISGARBAGE(elementPtr);
-        TM_SHORT_END
-        TM_GL_BEGIN
+        TM_BEGIN();
         TMELEMENT_SETISREFERENCED(elementPtr, FALSE);
         isGarbage = TMELEMENT_ISGARBAGE(elementPtr);
         TM_END();
-
         if (isGarbage) {
             /*
              * Handle delayed deallocation
@@ -263,40 +244,24 @@ process ()
 
         totalNumAdded += numAdded;
 
-        TM_SHORT_BEGIN
-        TMREGION_TRANSFERBAD_S(regionPtr, workHeapPtr);
-        TM_SHORT_END
-        TM_LONG_BEGIN
+        TM_BEGIN();
         TMREGION_TRANSFERBAD(regionPtr, workHeapPtr);
         TM_END();
+
         numProcess++;
 
     }
 
-    //no more splitting
-    TM_SHORT_BEGIN
-		TM_SHORT_WRITE(global_totalNumAdded,
-							TM_SHARED_READ(global_totalNumAdded) + totalNumAdded);
-		TM_SHORT_WRITE(global_numProcess,
-						TM_SHARED_READ(global_numProcess) + numProcess);
-	TM_SHORT_END
-	TM_GL_BEGIN
-		TM_SHARED_WRITE(global_totalNumAdded,
-						TM_SHARED_READ(global_totalNumAdded) + totalNumAdded);
-		TM_SHARED_WRITE(global_numProcess,
-						TM_SHARED_READ(global_numProcess) + numProcess);
+    TM_BEGIN();
+    TM_SHARED_WRITE(global_totalNumAdded,
+                    TM_SHARED_READ(global_totalNumAdded) + totalNumAdded);
+    TM_SHARED_WRITE(global_numProcess,
+                    TM_SHARED_READ(global_numProcess) + numProcess);
     TM_END();
 
     PREGION_FREE(regionPtr);
 
     TM_THREAD_EXIT();
-#ifdef STATISTICS
-        TM_TX_VAR
-    	printf("conflict = %d, capacity=%d, other=%d, our conflict=%d, external=%d\n", tx->conflict_abort, tx->capacity_abort, tx->other_abort, tx->our_conflict_abort, tx->external_abort);
-    	printf("HTM conflict = %d, our conflict = %d, capacity=%d, other=%d\n", tx->htm_conflict_abort, tx->htm_a_conflict_abort, tx->htm_capacity_abort, tx->htm_other_abort);
-    	printf("Last complete = %d, SW count = %d, HTM count = %d, abort count = %d\n", timestamp.val, tx->sw_c, tx->htm_success, tx->sw_abort);
-    	printf("global locking = %d\n", tx->gl_c);
-#endif
 }
 
 
@@ -306,9 +271,9 @@ process ()
  */
 MAIN(argc, argv)
 {
-//	RETRY_SHORT = 1;
     GOTO_REAL();
-
+    global_totalNumAdded.val = 0;
+    global_numProcess.val = 0;
     /*
      * Initialization
      */
@@ -361,9 +326,9 @@ MAIN(argc, argv)
      * Check solution
      */
 
-    long finalNumElement = initNumElement + global_totalNumAdded;
+    long finalNumElement = initNumElement + global_totalNumAdded.val;
     printf("Final mesh size                 = %li\n", finalNumElement);
-    printf("Number of elements processed    = %li\n", global_numProcess);
+    printf("Number of elements processed    = %li\n", global_numProcess.val);
     fflush(stdout);
 
 #if 0

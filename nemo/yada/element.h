@@ -288,9 +288,6 @@ TM_CALLABLE
 void
 TMelement_setIsReferenced (TM_ARGDECL  element_t* elementPtr, bool_t status);
 
-TM_CALLABLE
-void
-TMelement_setIsReferenced_s (TM_ARGDECL  element_t* elementPtr, bool_t status);
 
 /* =============================================================================
  * element_isGarbage
@@ -327,9 +324,6 @@ TM_CALLABLE
 void
 TMelement_setIsGarbage (TM_ARGDECL  element_t* elementPtr, bool_t status);
 
-TM_CALLABLE
-void
-TMelement_setIsGarbage_s (TM_ARGDECL  element_t* elementPtr, bool_t status);
 
 /* =============================================================================
  * element_addNeighbor
@@ -346,8 +340,6 @@ element_addNeighbor (element_t* elementPtr, element_t* neighborPtr);
 void
 TMelement_addNeighbor (TM_ARGDECL  element_t* elementPtr, element_t* neighborPtr);
 
-void
-TMelement_addNeighbor_s (TM_ARGDECL  element_t* elementPtr, element_t* neighborPtr);
 
 /* =============================================================================
  * element_getNeighborListPtr
@@ -417,12 +409,9 @@ element_printAngles (element_t* elementPtr);
 #define TMELEMENT_FREE(e)               /*TMelement_free(TM_ARG  e)*/
 #define TMELEMENT_ISREFERENCED(e)       TMelement_isReferenced(TM_ARG  e)
 #define TMELEMENT_SETISREFERENCED(e, s) TMelement_setIsReferenced(TM_ARG  e, s)
-#define TMELEMENT_SETISREFERENCED_S(e, s) TMelement_setIsReferenced_s(TM_ARG  e, s)
 #define TMELEMENT_ISGARBAGE(e)          TMelement_isGarbage(TM_ARG  e)
 #define TMELEMENT_SETISGARBAGE(e, s)    TMelement_setIsGarbage(TM_ARG  e, s)
-#define TMELEMENT_SETISGARBAGE_S(e, s)    TMelement_setIsGarbage_s(TM_ARG  e, s)
 #define TMELEMENT_ADDNEIGHBOR(e, n)     TMelement_addNeighbor(TM_ARG  e, n)
-#define TMELEMENT_ADDNEIGHBOR_S(e, n)     TMelement_addNeighbor_s(TM_ARG  e, n)
 #define TMELEMENT_GETNEIGHBORLIST(e)    TMelement_getNeighborListPtr(TM_ARG  e)
 
 
