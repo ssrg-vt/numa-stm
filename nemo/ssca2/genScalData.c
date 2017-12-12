@@ -786,9 +786,11 @@ genScalData (void* argPtr)
         permV = (tm_obj<ULONGINT_T>*)P_MALLOC(TOT_VERTICES * sizeof(tm_obj<ULONGINT_T>));
         assert(permV);
         memset(permV, 0, TOT_VERTICES * sizeof(tm_obj<ULONGINT_T>));
+#ifndef OBJSTM
         for (int j=0; j < TOT_VERTICES; j++) {
         	permV[j].lock_p = &(permV[j].lock);
         }
+#endif
         global_permV = permV;
     }
 

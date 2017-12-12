@@ -460,9 +460,11 @@ computeGraph (void* argPtr)
             (tm_obj<LONGINT_T>*)P_MALLOC(GPtr->numVertices * sizeof(tm_obj<LONGINT_T>));
         //TODO init
         memset(GPtr->inDegree, 0, GPtr->numVertices * sizeof(tm_obj<LONGINT_T>));
+#ifndef OBJSTM
         for (int j=0; j<GPtr->numVertices; j++){
         	GPtr->inDegree[j].lock_p = &(GPtr->inDegree[j].lock);
         }
+#endif
         assert(GPtr->inDegree);
         GPtr->inVertexIndex =
             (ULONGINT_T*)P_MALLOC(GPtr->numVertices * sizeof(ULONGINT_T));
@@ -485,9 +487,11 @@ computeGraph (void* argPtr)
         memset(impliedEdgeList, 0, GPtr->numVertices
                                                 * MAX_CLUSTER_SIZE
                                                 * sizeof(tm_obj<ULONGINT_T>));
+#ifndef OBJSTM
         for (int j=0; j<GPtr->numVertices * MAX_CLUSTER_SIZE; j++) {
         	impliedEdgeList[j].lock_p = &(impliedEdgeList[j].lock);
         }
+#endif
         global_impliedEdgeList = impliedEdgeList;
     }
 
@@ -515,9 +519,11 @@ computeGraph (void* argPtr)
     if (myId == 0) {
         auxArr = (tm_obj<tm_obj<ULONGINT_T>*>*)P_MALLOC(GPtr->numVertices * sizeof(tm_obj<tm_obj<ULONGINT_T>*>));
         memset(auxArr, 0, GPtr->numVertices * sizeof(tm_obj<tm_obj<ULONGINT_T>*>));
+#ifndef OBJSTM
         for (int j=0; j<GPtr->numVertices; j++) {
         	auxArr[j].lock_p = &(auxArr[j].lock);
         }
+#endif
         assert(auxArr);
         global_auxArr = auxArr;
     }
@@ -562,9 +568,11 @@ computeGraph (void* argPtr)
                         assert(a);
                         memset(a, 0, MAX_CLUSTER_SIZE
                                                    * sizeof(tm_obj<ULONGINT_T>));
+#ifndef OBJSTM
                         for (int j=0; j < MAX_CLUSTER_SIZE; j++) {
                         	a[j].lock_p = &(a[j].lock);
                         }
+#endif
                         TM_SHARED_WRITE_P(auxArr[v], a);
                     } else {
                         a = auxArr[v].val;

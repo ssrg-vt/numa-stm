@@ -3,7 +3,7 @@
 # Defines.common.mk
 #
 # ==============================================================================
-PROG := intruder
+PROG := intruder$(EXE_P)
 
 SRCS += \
 	decoder.c \

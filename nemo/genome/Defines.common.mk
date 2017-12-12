@@ -7,7 +7,7 @@
 CFLAGS += -DLIST_NO_DUPLICATES
 CFLAGS += -DCHUNK_STEP1=12
 
-PROG := genome
+PROG := genome$(EXE_P)
 
 SRCS += \
 	gene.c \

@@ -1275,7 +1275,9 @@ rbtree_alloc (long (*compare)(const void*, const void*))
     if (n) {
         n->compare = (compare ? compare : &compareKeysDefault);
         n->root.val = NULL;
+#ifndef OBJSTM
         n->root.lock_p = &(n->root.lock);
+#endif
         n->root.lock = 0;
         n->root.ver = 0;
     }
@@ -1294,7 +1296,9 @@ TMrbtree_alloc (TM_ARGDECL  long (*compare)(const void*, const void*))
     if (n){
         n->compare = (compare ? compare : &compareKeysDefault);
         n->root.val = NULL;
+#ifndef OBJSTM
         n->root.lock_p = &(n->root.lock);
+#endif
         n->root.lock = 0;
         n->root.ver = 0;
     }
@@ -1388,22 +1392,25 @@ static node_t*
 getNode ()
 {
     node_t* n = (node_t*)malloc(sizeof(*n));
+#ifndef OBJSTM
     n->k.lock_p = &(n->k.lock);
-    n->k.lock = 0;
-    n->k.ver = 0;
     n->v.lock_p = &(n->v.lock);
+    n->v.lock_p = &(n->v.lock);
+    n->v.lock_p = &(n->v.lock);
+	n->l.lock_p = &(n->l.lock);
+	n->r.lock_p = &(n->r.lock);
+	n->c.lock_p = &(n->c.lock);
+#endif
+	n->k.lock = 0;
+    n->k.ver = 0;
     n->v.lock = 0;
     n->v.ver = 0;
-	n->p.lock_p = &(n->p.lock);
 	n->p.lock = 0;
 	n->p.ver = 0;
-	n->l.lock_p = &(n->l.lock);
 	n->l.lock = 0;
 	n->l.ver = 0;
-	n->r.lock_p = &(n->r.lock);
 	n->r.lock = 0;
 	n->r.ver = 0;
-	n->c.lock_p = &(n->c.lock);
 	n->c.lock = 0;
 	n->c.ver = 0;
     return n;
@@ -1418,22 +1425,24 @@ static node_t*
 TMgetNode (TM_ARGDECL_ALONE)
 {
     node_t* n = (node_t*)TM_MALLOC(sizeof(*n));
+#ifndef OBJSTM
     n->k.lock_p = &(n->k.lock);
-    n->k.lock = 0;
-    n->k.ver = 0;
     n->v.lock_p = &(n->v.lock);
+	n->p.lock_p = &(n->p.lock);
+	n->l.lock_p = &(n->l.lock);
+	n->r.lock_p = &(n->r.lock);
+	n->c.lock_p = &(n->c.lock);
+#endif
+	n->k.lock = 0;
+    n->k.ver = 0;
     n->v.lock = 0;
     n->v.ver = 0;
-	n->p.lock_p = &(n->p.lock);
 	n->p.lock = 0;
 	n->p.ver = 0;
-	n->l.lock_p = &(n->l.lock);
 	n->l.lock = 0;
 	n->l.ver = 0;
-	n->r.lock_p = &(n->r.lock);
 	n->r.lock = 0;
 	n->r.ver = 0;
-	n->c.lock_p = &(n->c.lock);
 	n->c.lock = 0;
 	n->c.ver = 0;
     return n;

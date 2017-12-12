@@ -109,7 +109,9 @@ grid_alloc (long width, long height, long depth)
 //        memset(gridPtr->points, GRID_POINT_EMPTY, (n * sizeof(long)));
         for (int i=0; i<n;i++) {
         	gridPtr->points[i].val = GRID_POINT_EMPTY;
+#ifndef OBJSTM
         	gridPtr->points[i].lock_p = &(gridPtr->points[i].lock);
+#endif
         	gridPtr->points[i].lock = 0;
         	gridPtr->points[i].ver = 0;
         }
@@ -144,7 +146,9 @@ Pgrid_alloc (long width, long height, long depth)
 //        memset(gridPtr->points, GRID_POINT_EMPTY, (n * sizeof(long)));
         for (int i=0; i<n;i++) {
         	gridPtr->points[i].val = GRID_POINT_EMPTY;
+#ifndef OBJSTM
         	gridPtr->points[i].lock_p = &(gridPtr->points[i].lock);
+#endif
         	gridPtr->points[i].lock = 0;
         	gridPtr->points[i].ver = 0;
         }

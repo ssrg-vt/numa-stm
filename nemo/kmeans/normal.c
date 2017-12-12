@@ -211,10 +211,14 @@ normal_exec (int       nthreads,
              int*      membership,
              random_t* randomPtr) /* out: [npoints] */
 {
+#ifndef OBJSTM
 	global_delta.lock_p = &(global_delta.lock);
+#endif
 	global_delta.lock = 0;
 	global_delta.ver = 0;
+#ifndef OBJSTM
 	global_i.lock_p = &(global_i.lock);
+#endif
 	global_i.lock = 0;
 	global_i.ver = 0;
 
@@ -274,11 +278,15 @@ normal_exec (int       nthreads,
         }
         for (i = 0; i < nclusters; i++) {
             for (j = 0; j < nfeatures; j++) {
+#ifndef OBJSTM
                 new_centers[i][j].lock_p = &(new_centers[i][j].lock);
+#endif
                 new_centers[i][j].lock = 0;
                 new_centers[i][j].ver = 0;
             }
+#ifndef OBJSTM
             (*new_centers_len[i]).lock_p = &((*new_centers_len[i]).lock);
+#endif
             (*new_centers_len[i]).lock = 0;
 			(*new_centers_len[i]).ver = 0;
         }

@@ -3,7 +3,7 @@
 # Defines.common.mk
 #
 # ==============================================================================
-PROG := redblacktree
+PROG := redblacktree$(EXE_P)
 
 SRCS += \
 	redblacktree.c \

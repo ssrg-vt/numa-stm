@@ -193,11 +193,15 @@ allocNode (void* dataPtr)
     }
 
     nodePtr->dataPtr.val = dataPtr;
+#ifndef OBJSTM
     nodePtr->dataPtr.lock_p = &(nodePtr->dataPtr.lock);
+#endif
     nodePtr->dataPtr.lock = 0;
     nodePtr->dataPtr.ver = 0;
     nodePtr->nextPtr.val = NULL;
+#ifndef OBJSTM
     nodePtr->nextPtr.lock_p = &(nodePtr->nextPtr.lock);
+#endif
     nodePtr->nextPtr.lock = 0;
     nodePtr->nextPtr.ver = 0;
 
@@ -219,11 +223,15 @@ PallocNode (void* dataPtr)
     }
 
     nodePtr->dataPtr.val = dataPtr;
+#ifndef OBJSTM
     nodePtr->dataPtr.lock_p = &(nodePtr->dataPtr.lock);
+#endif
     nodePtr->dataPtr.lock = 0;
     nodePtr->dataPtr.ver = 0;
     nodePtr->nextPtr.val = NULL;
+#ifndef OBJSTM
     nodePtr->nextPtr.lock_p = &(nodePtr->nextPtr.lock);
+#endif
     nodePtr->nextPtr.lock = 0;
     nodePtr->nextPtr.ver = 0;
 
@@ -245,11 +253,15 @@ TMallocNode (TM_ARGDECL  void* dataPtr)
     }
 
     nodePtr->dataPtr.val = dataPtr;
+#ifndef OBJSTM
     nodePtr->dataPtr.lock_p = &(nodePtr->dataPtr.lock);
+#endif
     nodePtr->dataPtr.lock = 0;
     nodePtr->dataPtr.ver = 0;
     nodePtr->nextPtr.val = NULL;
+#ifndef OBJSTM
     nodePtr->nextPtr.lock_p = &(nodePtr->nextPtr.lock);
+#endif
     nodePtr->nextPtr.lock = 0;
     nodePtr->nextPtr.ver = 0;
 
@@ -272,18 +284,26 @@ list_alloc (long (*compare)(const void*, const void*))
     }
 
     listPtr->head.val.dataPtr.val = NULL;
+#ifndef OBJSTM
     listPtr->head.val.dataPtr.lock_p = &(listPtr->head.val.dataPtr.lock);
+#endif
     listPtr->head.val.dataPtr.lock = 0;
     listPtr->head.val.dataPtr.ver = 0;
     listPtr->head.val.nextPtr.val = NULL;
+#ifndef OBJSTM
     listPtr->head.val.nextPtr.lock_p = &(listPtr->head.val.nextPtr.lock);
+#endif
     listPtr->head.val.nextPtr.lock = 0;
     listPtr->head.val.nextPtr.ver = 0;
+#ifndef OBJSTM
     listPtr->head.lock_p = &(listPtr->head.lock);
+#endif
     listPtr->head.lock = 0;
     listPtr->head.ver = 0;
     listPtr->size.val = 0;
+#ifndef OBJSTM
     listPtr->size.lock_p = &(listPtr->size.lock);
+#endif
     listPtr->size.lock = 0;
     listPtr->size.ver = 0;
 
@@ -312,18 +332,26 @@ Plist_alloc (long (*compare)(const void*, const void*))
     }
 
     listPtr->head.val.dataPtr.val = NULL;
+#ifndef OBJSTM
     listPtr->head.val.dataPtr.lock_p = &(listPtr->head.val.dataPtr.lock);
+#endif
     listPtr->head.val.dataPtr.lock = 0;
     listPtr->head.val.dataPtr.ver = 0;
     listPtr->head.val.nextPtr.val = NULL;
+#ifndef OBJSTM
     listPtr->head.val.nextPtr.lock_p = &(listPtr->head.val.nextPtr.lock);
+#endif
     listPtr->head.val.nextPtr.lock = 0;
     listPtr->head.val.nextPtr.ver = 0;
+#ifndef OBJSTM
     listPtr->head.lock_p = &(listPtr->head.lock);
+#endif
     listPtr->head.lock = 0;
     listPtr->head.ver = 0;
     listPtr->size.val = 0;
+#ifndef OBJSTM
     listPtr->size.lock_p = &(listPtr->size.lock);
+#endif
     listPtr->size.lock = 0;
     listPtr->size.ver = 0;
 
@@ -352,18 +380,26 @@ TMlist_alloc (TM_ARGDECL  long (*compare)(const void*, const void*))
     }
 
     listPtr->head.val.dataPtr.val = NULL;
+#ifndef OBJSTM
     listPtr->head.val.dataPtr.lock_p = &(listPtr->head.val.dataPtr.lock);
+#endif
     listPtr->head.val.dataPtr.lock = 0;
     listPtr->head.val.dataPtr.ver = 0;
     listPtr->head.val.nextPtr.val = NULL;
+#ifndef OBJSTM
     listPtr->head.val.nextPtr.lock_p = &(listPtr->head.val.nextPtr.lock);
+#endif
     listPtr->head.val.nextPtr.lock = 0;
     listPtr->head.val.nextPtr.ver = 0;
+#ifndef OBJSTM
     listPtr->head.lock_p = &(listPtr->head.lock);
+#endif
     listPtr->head.lock = 0;
     listPtr->head.ver = 0;
     listPtr->size.val = 0;
+#ifndef OBJSTM
     listPtr->size.lock_p = &(listPtr->size.lock);
+#endif
     listPtr->size.lock = 0;
     listPtr->size.ver = 0;
 

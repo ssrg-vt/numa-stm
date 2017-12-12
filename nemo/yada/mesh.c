@@ -104,7 +104,9 @@ mesh_alloc ()
 
     if (meshPtr) {
         meshPtr->rootElementPtr.val = NULL;
+#ifndef OBJSTM
         meshPtr->rootElementPtr.lock_p = &(meshPtr->rootElementPtr.lock);
+#endif
         meshPtr->rootElementPtr.lock = 0;
 		meshPtr->rootElementPtr.ver = 0;
         meshPtr->initBadQueuePtr = queue_alloc(-1);

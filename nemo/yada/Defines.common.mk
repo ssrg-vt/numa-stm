@@ -9,7 +9,7 @@ CFLAGS += -DLIST_NO_DUPLICATES
 CFLAGS += -DMAP_USE_AVLTREE
 CFLAGS += -DSET_USE_RBTREE
 
-PROG := yada
+PROG := yada$(EXE_P)
 SRCS += \
 	coordinate.c \
 	element.c \

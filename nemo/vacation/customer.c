@@ -107,7 +107,9 @@ customer_alloc (TM_ARGDECL  long id)
     customerPtr->id = id;
 
     customerPtr->reservationInfoListPtr.val = TMLIST_ALLOC(&compareReservationInfo);
+#ifndef OBJSTM
     customerPtr->reservationInfoListPtr.lock_p = &(customerPtr->reservationInfoListPtr.lock);
+#endif
     customerPtr->reservationInfoListPtr.lock = 0;
     customerPtr->reservationInfoListPtr.ver = 0;
     assert(customerPtr->reservationInfoListPtr.val != NULL);
@@ -127,7 +129,9 @@ customer_alloc_seq (long id)
     customerPtr->id = id;
 
     customerPtr->reservationInfoListPtr.val = list_alloc(&compareReservationInfo);
+#ifndef OBJSTM
     customerPtr->reservationInfoListPtr.lock_p = &(customerPtr->reservationInfoListPtr.lock);
+#endif
     customerPtr->reservationInfoListPtr.lock = 0;
     customerPtr->reservationInfoListPtr.ver = 0;
     assert(customerPtr->reservationInfoListPtr.val != NULL);

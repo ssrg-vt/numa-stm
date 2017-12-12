@@ -262,7 +262,13 @@ FORCE_INLINE T tm_read(tm_obj<T>* addr, Tx_Context* tx, int numa_zone)
 	T val = obj->val;
 	CFENCE;
 	uint64_t v2 = obj->ver;
-	if (v1 > tx->start_time[0] || (v1 != v2) || (*(obj->lock_p) > 0)) {
+	if (v1 > tx->start_time[0] || (v1 != v2) ||
+#ifndef OBJSTM
+			(*(obj->lock_p) > 0)
+#else
+			obj->lock > 0
+#endif
+	) {
 		//printf("error in read l=%d, v1=%lld, v2=%lld, start=%lld\n", *(obj->lock_p), v1, v2,tx->start_time[0]);
 		tm_abort(tx, 0);
 	}
@@ -484,6 +490,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	volatile int* volatile firstLock;
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
+#ifndef OBJSTM
 		if (i == 0) {
 			firstLock = obj->lock_p;
 		}
@@ -504,13 +511,25 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 			failed = true;
 			break;
 		}
+#else
+		if (__sync_bool_compare_and_swap(&obj->lock, 0, idP1)) {
+			tx->granted_writes[i] = 1;
+		} else {
+			failed = true;
+			break;
+		}
+#endif
 	}
 
 	if (failed) { //unlock and abort
 		for (int i = 0; i < tx->writes_pos; i++) {
 			tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 			if (tx->granted_writes[i] == 1) {
+#ifndef OBJSTM
 				*(obj->lock_p) = 0;
+#else
+				obj->lock = 0;
+#endif
 			} else if (!tx->granted_writes[i]){
 				break;
 			}
@@ -535,7 +554,11 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		for (int i = 0; i < tx->writes_pos; i++) {
 			tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 			if (tx->granted_writes[i] == 1) {
+#ifndef OBJSTM
 				*(obj->lock_p) = 0;
+#else
+				obj->lock = 0;
+#endif
 			}
 //			else {
 //				break;
@@ -565,30 +588,21 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 		obj->ver = next_ts;
-//		volatile int* volatile oldP = obj->lock_p;
-//		CFENCE;
-//		obj->lock_p = firstLock;
-//		MFENCE;
+#ifndef OBJSTM
 		volatile int* volatile oldP = obj->lock_p;
-//		MFENCE;
-//		obj->lock_p = lock;
 		obj->lock_p = firstLock;
-//		MFENCE;
-//		*(oldP) = 0;
-//		*lock = 0;
-//		MFENCE;
-//		MFENCE;
-//		obj->lock_p = oldP;
-//		obj->lock = 0;
-//		__sync_bool_compare_and_swap(&obj->lock_p, 0, idP1)
 		if (oldP != firstLock)
 			*(oldP) = 0;
-	}
+#else
+		obj->lock = 0;
+#endif
+		}
 //	printf("%d %d \n", tx->writes_pos, *lock);
 //	MFENCE;
 //	CFENCE;
+#ifndef OBJSTM
 	*(firstLock) = 0;
-
+#endif
 	tx->commits++;
 }
 

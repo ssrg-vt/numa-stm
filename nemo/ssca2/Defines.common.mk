@@ -3,7 +3,7 @@
 # Defines.common.mk
 #
 # ==============================================================================
-PROG := ssca2
+PROG := ssca2$(EXE_P)
 
 SRCS += \
 	alg_radix_smp.c \

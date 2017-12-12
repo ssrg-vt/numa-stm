@@ -5,7 +5,7 @@
 # ==============================================================================
 LIBS += -lm
 
-PROG := labyrinth
+PROG := labyrinth$(EXE_P)
 
 SRCS += \
 	coordinate.c \

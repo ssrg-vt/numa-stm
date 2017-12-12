@@ -27,11 +27,15 @@ template <typename T>
 struct tm_obj {
 	volatile uint64_t ver = 0;
 	volatile int lock = 0;
+#ifndef OBJSTM
 	volatile int* volatile lock_p;
+#endif
 	T val;
+#ifndef OBJSTM
 	tm_obj() {
 		this->lock_p = &(this->lock);
 	}
+#endif
 };
 
 namespace

@@ -209,29 +209,41 @@ sequencer_alloc (long geneLength, long segmentLength, segments_t* segmentsPtr)
     for (i= 0; i < maxNumUniqueSegment; i++) {
         constructEntry_t* constructEntryPtr = &sequencerPtr->constructEntries[i];
         constructEntryPtr->isStart.val = TRUE;
+#ifndef OBJSTM
         constructEntryPtr->isStart.lock_p = &(constructEntryPtr->isStart.lock);
+#endif
         constructEntryPtr->isStart.lock = 0;
         constructEntryPtr->isStart.ver = 0;
         constructEntryPtr->segment.val = NULL;
+#ifndef OBJSTM
         constructEntryPtr->segment.lock_p = &(constructEntryPtr->segment.lock);
+#endif
         constructEntryPtr->segment.lock = 0;
         constructEntryPtr->segment.ver = 0;
         constructEntryPtr->endHash = 0;
         constructEntryPtr->startPtr.val = constructEntryPtr;
+#ifndef OBJSTM
         constructEntryPtr->startPtr.lock_p = &(constructEntryPtr->startPtr.lock);
+#endif
         constructEntryPtr->startPtr.lock = 0;
         constructEntryPtr->startPtr.ver = 0;
         constructEntryPtr->nextPtr = NULL;
         constructEntryPtr->endPtr.val = constructEntryPtr;
+#ifndef OBJSTM
         constructEntryPtr->endPtr.lock_p = &(constructEntryPtr->endPtr.lock);
+#endif
         constructEntryPtr->endPtr.lock = 0;
         constructEntryPtr->endPtr.ver = 0;
         constructEntryPtr->overlap.val = 0;
+#ifndef OBJSTM
         constructEntryPtr->overlap.lock_p = &(constructEntryPtr->overlap.lock);
+#endif
         constructEntryPtr->overlap.lock = 0;
         constructEntryPtr->overlap.ver = 0;
         constructEntryPtr->length.val = segmentLength;
+#ifndef OBJSTM
         constructEntryPtr->length.lock_p = &(constructEntryPtr->length.lock);
+#endif
         constructEntryPtr->length.lock = 0;
         constructEntryPtr->length.ver = 0;
     }

@@ -392,11 +392,15 @@ element_alloc (coordinate_t* coordinates, long numCoordinate)
         elementPtr->neighborListPtr = list_alloc(element_listCompare);
         assert(elementPtr->neighborListPtr);
         elementPtr->isGarbage.val = FALSE;
+#ifndef OBJSTM
         elementPtr->isGarbage.lock_p = &(elementPtr->isGarbage.lock);
+#endif
         elementPtr->isGarbage.lock = 0;
         elementPtr->isGarbage.ver = 0;
         elementPtr->isReferenced.val = FALSE;
+#ifndef OBJSTM
         elementPtr->isReferenced.lock_p = &(elementPtr->isReferenced.lock);
+#endif
         elementPtr->isReferenced.lock = 0;
         elementPtr->isReferenced.ver = 0;
     }
@@ -430,11 +434,15 @@ Pelement_alloc (coordinate_t* coordinates, long numCoordinate)
         elementPtr->neighborListPtr = PLIST_ALLOC(element_listCompare);
         assert(elementPtr->neighborListPtr);
         elementPtr->isGarbage.val = FALSE;
+#ifndef OBJSTM
         elementPtr->isGarbage.lock_p = &(elementPtr->isGarbage.lock);
+#endif
         elementPtr->isGarbage.lock = 0;
         elementPtr->isGarbage.ver = 0;
         elementPtr->isReferenced.val = FALSE;
+#ifndef OBJSTM
         elementPtr->isReferenced.lock_p = &(elementPtr->isReferenced.lock);
+#endif
         elementPtr->isReferenced.lock = 0;
         elementPtr->isReferenced.ver = 0;
     }
@@ -468,11 +476,15 @@ TMelement_alloc (TM_ARGDECL  coordinate_t* coordinates, long numCoordinate)
         elementPtr->neighborListPtr = TMLIST_ALLOC(element_listCompare);
         assert(elementPtr->neighborListPtr);
         elementPtr->isGarbage.val = FALSE;
+#ifndef OBJSTM
         elementPtr->isGarbage.lock_p = &(elementPtr->isGarbage.lock);
+#endif
         elementPtr->isGarbage.lock = 0;
         elementPtr->isGarbage.ver = 0;
         elementPtr->isReferenced.val = FALSE;
+#ifndef OBJSTM
         elementPtr->isReferenced.lock_p = &(elementPtr->isReferenced.lock);
+#endif
         elementPtr->isReferenced.lock = 0;
         elementPtr->isReferenced.ver = 0;
     }

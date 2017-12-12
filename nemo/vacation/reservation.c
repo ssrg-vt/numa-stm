@@ -197,19 +197,27 @@ reservation_alloc (TM_ARGDECL  long id, long numTotal, long price)
     if (reservationPtr != NULL) {
         reservationPtr->id = id;
         reservationPtr->numUsed.val = 0;
+#ifndef OBJSTM
         reservationPtr->numUsed.lock_p = &(reservationPtr->numUsed.lock);
+#endif
         reservationPtr->numUsed.lock = 0;
         reservationPtr->numUsed.ver = 0;
         reservationPtr->numFree.val = numTotal;
+#ifndef OBJSTM
         reservationPtr->numFree.lock_p = &(reservationPtr->numFree.lock);
+#endif
         reservationPtr->numFree.lock = 0;
         reservationPtr->numFree.ver = 0;
         reservationPtr->numTotal.val = numTotal;
+#ifndef OBJSTM
         reservationPtr->numTotal.lock_p = &(reservationPtr->numTotal.lock);
+#endif
         reservationPtr->numTotal.lock = 0;
         reservationPtr->numTotal.ver = 0;
         reservationPtr->price.val = price;
+#ifndef OBJSTM
         reservationPtr->price.lock_p = &(reservationPtr->price.lock);
+#endif
         reservationPtr->price.lock = 0;
         reservationPtr->price.ver = 0;
         CHECK_RESERVATION(reservationPtr);
@@ -228,19 +236,21 @@ reservation_alloc_seq (long id, long numTotal, long price)
     if (reservationPtr != NULL) {
         reservationPtr->id = id;
         reservationPtr->numUsed.val = 0;
+#ifndef OBJSTM
         reservationPtr->numUsed.lock_p = &(reservationPtr->numUsed.lock);
+        reservationPtr->numFree.lock_p = &(reservationPtr->numFree.lock);
+        reservationPtr->numTotal.lock_p = &(reservationPtr->numTotal.lock);
+        reservationPtr->price.lock_p = &(reservationPtr->price.lock);
+#endif
         reservationPtr->numUsed.lock = 0;
         reservationPtr->numUsed.ver = 0;
         reservationPtr->numFree.val = numTotal;
-        reservationPtr->numFree.lock_p = &(reservationPtr->numFree.lock);
         reservationPtr->numFree.lock = 0;
         reservationPtr->numFree.ver = 0;
         reservationPtr->numTotal.val = numTotal;
-        reservationPtr->numTotal.lock_p = &(reservationPtr->numTotal.lock);
         reservationPtr->numTotal.lock = 0;
         reservationPtr->numTotal.ver = 0;
         reservationPtr->price.val = price;
-        reservationPtr->price.lock_p = &(reservationPtr->price.lock);
         reservationPtr->price.lock = 0;
         reservationPtr->price.ver = 0;
         checkReservation_seq(reservationPtr);

@@ -106,25 +106,34 @@ queue_alloc (long initCapacity)
             free(queuePtr);
             return NULL;
         }
+#ifndef OBJSTM
         queuePtr->elements.lock_p = &(queuePtr->elements.lock);
+#endif
         queuePtr->elements.lock = 0;
         queuePtr->elements.ver = 0;
 
         memset(queuePtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < capacity; i++) {
         	queuePtr->elements.val[i].lock_p = &(queuePtr->elements.val[i].lock);
         }
-
+#endif
         queuePtr->pop.val      = capacity - 1;
+#ifndef OBJSTM
         queuePtr->pop.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->pop.lock = 0;
         queuePtr->pop.ver = 0;
         queuePtr->push.val     = 0;
+#ifndef OBJSTM
         queuePtr->push.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->push.lock = 0;
         queuePtr->push.ver = 0;
         queuePtr->capacity.val = capacity;
+#ifndef OBJSTM
         queuePtr->capacity.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->capacity.lock = 0;
         queuePtr->capacity.ver = 0;
     }
@@ -150,25 +159,34 @@ Pqueue_alloc (long initCapacity)
             free(queuePtr);
             return NULL;
         }
+#ifndef OBJSTM
         queuePtr->elements.lock_p = &(queuePtr->elements.lock);
+#endif
         queuePtr->elements.lock = 0;
         queuePtr->elements.ver = 0;
         memset(queuePtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < capacity; i++) {
         	queuePtr->elements.val[i].lock_p = &(queuePtr->elements.val[i].lock);
         }
-
+#endif
 
         queuePtr->pop.val      = capacity - 1;
+#ifndef OBJSTM
         queuePtr->pop.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->pop.lock = 0;
         queuePtr->pop.ver = 0;
         queuePtr->push.val     = 0;
+#ifndef OBJSTM
         queuePtr->push.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->push.lock = 0;
         queuePtr->push.ver = 0;
         queuePtr->capacity.val = capacity;
+#ifndef OBJSTM
         queuePtr->capacity.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->capacity.lock = 0;
         queuePtr->capacity.ver = 0;
     }
@@ -193,24 +211,33 @@ TMqueue_alloc (TM_ARGDECL  long initCapacity)
             free(queuePtr);
             return NULL;
         }
+#ifndef OBJSTM
         queuePtr->elements.lock_p = &(queuePtr->elements.lock);
+#endif
         queuePtr->elements.lock = 0;
         queuePtr->elements.ver = 0;
         memset(queuePtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < capacity; i++) {
         	queuePtr->elements.val[i].lock_p = &(queuePtr->elements.val[i].lock);
         }
-
+#endif
         queuePtr->pop.val      = capacity - 1;
+#ifndef OBJSTM
         queuePtr->pop.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->pop.lock = 0;
         queuePtr->pop.ver = 0;
         queuePtr->push.val     = 0;
+#ifndef OBJSTM
         queuePtr->push.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->push.lock = 0;
         queuePtr->push.ver = 0;
         queuePtr->capacity.val = capacity;
+#ifndef OBJSTM
         queuePtr->capacity.lock_p = &(queuePtr->pop.lock);
+#endif
         queuePtr->capacity.lock = 0;
         queuePtr->capacity.ver = 0;
     }
@@ -353,10 +380,11 @@ queue_push (queue_t* queuePtr, void* dataPtr)
             return FALSE;
         }
         memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < newCapacity; i++) {
         	newElements[i].lock_p = &(newElements[i].lock);
         }
-
+#endif
 
         long dst = 0;
         tm_obj<void*>* elements = queuePtr->elements.val;
@@ -413,10 +441,11 @@ Pqueue_push (queue_t* queuePtr, void* dataPtr)
             return FALSE;
         }
         memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < newCapacity; i++) {
         	newElements[i].lock_p = &(newElements[i].lock);
         }
-
+#endif
 
         long dst = 0;
         tm_obj<void*>* elements = queuePtr->elements.val;
@@ -472,9 +501,11 @@ TMqueue_push (TM_ARGDECL  queue_t* queuePtr, void* dataPtr)
             return FALSE;
         }
         memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < newCapacity; i++) {
         	newElements[i].lock_p = &(newElements[i].lock);
         }
+#endif
 
         long dst = 0;
         tm_obj<void*>* elements = (tm_obj<void*>*)TM_SHARED_READ_P(queuePtr->elements);

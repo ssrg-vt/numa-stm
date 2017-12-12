@@ -116,19 +116,27 @@ heap_alloc (long initCapacity, long (*compare)(const void*, const void*))
         long capacity = ((initCapacity > 0) ? (initCapacity) : (1));
         heapPtr->elements.val = (tm_obj<void*>*)malloc(capacity * sizeof(tm_obj<void*>));
         assert(heapPtr->elements.val);
+#ifndef OBJSTM
         heapPtr->elements.lock_p = &(heapPtr->elements.lock);
+#endif
         heapPtr->elements.lock = 0;
         heapPtr->elements.ver = 0;
         memset(heapPtr->elements.val, 0, capacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
         for (int i=0; i < capacity; i++) {
         	heapPtr->elements.val[i].lock_p = &(heapPtr->elements.val[i].lock);
         }
+#endif
         heapPtr->size.val = 0;
+#ifndef OBJSTM
         heapPtr->size.lock_p = &(heapPtr->size.lock);
+#endif
         heapPtr->size.lock = 0;
         heapPtr->size.ver = 0;
         heapPtr->capacity.val = capacity;
+#ifndef OBJSTM
         heapPtr->capacity.lock_p = &(heapPtr->capacity.lock);
+#endif
         heapPtr->capacity.lock = 0;
         heapPtr->capacity.ver = 0;
         heapPtr->compare = compare;
@@ -220,10 +228,12 @@ heap_insert (heap_t* heapPtr, void* dataPtr)
             return FALSE;
         }
         memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
 		for (int i=0; i < newCapacity; i++) {
 			newElements[i].lock_p = &(newElements[i].lock);
 		}
-        heapPtr->capacity.val = newCapacity;
+#endif
+		heapPtr->capacity.val = newCapacity;
         long i;
         tm_obj<void*>* elements = heapPtr->elements.val;
         for (i = 0; i <= size; i++) {
@@ -259,10 +269,12 @@ TMheap_insert (TM_ARGDECL  heap_t* heapPtr, void* dataPtr)
             return FALSE;
         }
         memset(newElements, 0, newCapacity * sizeof(tm_obj<void*>));
+#ifndef OBJSTM
 		for (int i=0; i < newCapacity; i++) {
 			newElements[i].lock_p = &(newElements[i].lock);
 		}
-        TM_SHARED_WRITE(heapPtr->capacity, newCapacity);
+#endif
+		TM_SHARED_WRITE(heapPtr->capacity, newCapacity);
         long i;
         tm_obj<void*>* elements = TM_SHARED_READ_P(heapPtr->elements);
         for (i = 0; i <= size; i++) {

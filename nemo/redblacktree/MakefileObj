@@ -4,7 +4,10 @@
 #
 # ==============================================================================
 
+
 include ../common/Defines.common.mk
+EXE_P := Obj
+CFLAGS += -DOBJSTM
 include ./Defines.common.mk
 include ../common/Makefile
 

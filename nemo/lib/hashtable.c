@@ -332,7 +332,9 @@ hashtable_alloc (long initNumBucket,
     hashtablePtr->numBucket = initNumBucket;
 #ifdef HASHTABLE_SIZE_FIELD
     hashtablePtr->size.val = 0;
+#ifndef OBJSTM
     hashtablePtr->size.lock_p = &(hashtablePtr->size.lock);
+#endif
     hashtablePtr->size.lock = 0;
     hashtablePtr->size.ver = 0;
 #endif
@@ -377,7 +379,9 @@ TMhashtable_alloc (TM_ARGDECL
     hashtablePtr->numBucket = initNumBucket;
 #ifdef HASHTABLE_SIZE_FIELD
     hashtablePtr->size.val = 0;
+#ifndef OBJSTM
     hashtablePtr->size.lock_p = &(hashtablePtr->size.lock);
+#endif
     hashtablePtr->size.lock = 0;
     hashtablePtr->size.ver = 0;
 #endif

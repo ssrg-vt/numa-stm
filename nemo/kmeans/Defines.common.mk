@@ -6,7 +6,7 @@
 
 CFLAGS += -DOUTPUT_TO_STDOUT
 
-PROG := kmeans
+PROG := kmeans$(EXE_P)
 
 SRCS += \
 	cluster.c \
