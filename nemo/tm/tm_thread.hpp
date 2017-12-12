@@ -174,10 +174,10 @@ extern pad_word_t counter;
 FORCE_INLINE
 uint64_t read_tsc(void)
 {
-//	uint32_t a, d;
-//	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
-//	return ((uint64_t) a) | (((uint64_t) d) << 32);
-	return __sync_fetch_and_add(&(counter.val), 1);
+	uint32_t a, d;
+	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
+	return ((uint64_t) a) | (((uint64_t) d) << 32);
+//	return __sync_fetch_and_add(&(counter.val), 1);
 }
 
 
@@ -573,13 +573,13 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	uintptr_t next_ts = read_tsc();// << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
 //	CFENCE;
-//	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-//		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-//		while (i-- >= 0) {
-//			asm volatile ("pause");
-//		}
-//		next_ts = read_tsc();// << LOCKBIT;
-//	}
+	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
+		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
+		while (i-- >= 0) {
+			asm volatile ("pause");
+		}
+		next_ts = read_tsc();// << LOCKBIT;
+	}
 
 	//update versions & unlock
 //	int* lock = (int*) malloc(sizeof(int));

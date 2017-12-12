@@ -9,7 +9,7 @@ do
 for (( j = 1 ; j <= 5; j++ ))
 do
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/kmeans/kmeansObj -m15 -n15 -t0.00001 -i /home/users/mohamed2/nemo/kmeans/inputs/random-n65536-d32-c16.txt -p$i)" | egrep -e 'Time: [^ ]*' -o | cut -d ' ' -f 2)
+	temp=$(echo "$(/home/users/mohamed2/nemo/kmeans/kmeans -m15 -n15 -t0.00001 -i /home/users/mohamed2/nemo/kmeans/inputs/random-n65536-d32-c16.txt -p$i)" | egrep -e 'Time: [^ ]*' -o | cut -d ' ' -f 2)
 	htm_time=$(echo $htm_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 
@@ -38,7 +38,7 @@ do
 for (( j = 1 ; j <= 5; j++ ))
 do
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/kmeans/kmeansObj -m40 -n40 -t0.00001  -i /home/users/mohamed2/nemo/kmeans/inputs/random-n65536-d32-c16.txt -p$i)" | egrep -e 'Time: [^ ]*' -o | cut -d ' ' -f 2)
+	temp=$(echo "$(/home/users/mohamed2/nemo/kmeans/kmeans -m40 -n40 -t0.00001  -i /home/users/mohamed2/nemo/kmeans/inputs/random-n65536-d32-c16.txt -p$i)" | egrep -e 'Time: [^ ]*' -o | cut -d ' ' -f 2)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -67,7 +67,7 @@ do
 for (( j = 1 ; j <= 5; j++ ))
 do
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/ssca2/ssca2Obj -s20 -i1.0 -u1.0 -l3 -p3 -t$i)"  | egrep -e 'Time taken for all is' | egrep -e [1234567890.]* -o)
+	temp=$(echo "$(/home/users/mohamed2/nemo/ssca2/ssca2 -s20 -i1.0 -u1.0 -l3 -p3 -t$i)"  | egrep -e 'Time taken for all is' | egrep -e [1234567890.]* -o)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -96,7 +96,7 @@ for (( j = 1 ; j <= 5; j++ ))
 do	
 
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/labyrinth/labyrinthObj -i /home/users/mohamed2/nemo/labyrinth/inputs/random-x512-y512-z7-n512.txt -t$i)"  | egrep -e 'Elapsed time    = [^ ]*' -o | cut -d '=' -f 2 | cut -d ' ' -f 2)
+	temp=$(echo "$(/home/users/mohamed2/nemo/labyrinth/labyrinth -i /home/users/mohamed2/nemo/labyrinth/inputs/random-x512-y512-z7-n512.txt -t$i)"  | egrep -e 'Elapsed time    = [^ ]*' -o | cut -d '=' -f 2 | cut -d ' ' -f 2)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -125,7 +125,7 @@ do
 for (( j = 1 ; j <= 5; j++ ))
 do
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/vacation/vacationObj -n4 -q60 -u90 -r1048576 -t4194304 -c$i)" | egrep -e 'Time = [^ ]*' -o | cut -d ' ' -f 3)
+	temp=$(echo "$(/home/users/mohamed2/nemo/vacation/vacation -n4 -q60 -u90 -r1048576 -t4194304 -c$i)" | egrep -e 'Time = [^ ]*' -o | cut -d ' ' -f 3)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -153,7 +153,7 @@ do
 for (( j = 1 ; j <= 5; j++ ))
 do
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/vacation/vacationObj -n2 -q90 -u98 -r1048576 -t4194304 -c$i)" | egrep -e 'Time = [^ ]*' -o | cut -d ' ' -f 3)
+	temp=$(echo "$(/home/users/mohamed2/nemo/vacation/vacation -n2 -q90 -u98 -r1048576 -t4194304 -c$i)" | egrep -e 'Time = [^ ]*' -o | cut -d ' ' -f 3)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -181,7 +181,7 @@ do
 for (( j = 1 ; j <= 5; j++ ))
 do
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/yada/yadaObj -a15 -i /home/users/mohamed2/nemo/yada/inputs/ttimeu1000000.2 -t$i)" | egrep -e 'Elapsed time[ ]*= [^ ]*' -o | egrep -e [1234567890.]* -o)
+	temp=$(echo "$(/home/users/mohamed2/nemo/yada/yada -a15 -i /home/users/mohamed2/nemo/yada/inputs/ttimeu1000000.2 -t$i)" | egrep -e 'Elapsed time[ ]*= [^ ]*' -o | egrep -e [1234567890.]* -o)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -208,7 +208,7 @@ do
 
 for (( j = 1 ; j <= 5; j++ ))
 do
-	temp=$(echo "$(/home/users/mohamed2/nemo/genome/genomeObj -g16384 -s64 -n16777216 -t$i)" | egrep -e 'Time[ ]*=' | egrep -e [1234567890.]* -o)
+	temp=$(echo "$(/home/users/mohamed2/nemo/genome/genome -g16384 -s64 -n16777216 -t$i)" | egrep -e 'Time[ ]*=' | egrep -e [1234567890.]* -o)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
@@ -237,7 +237,7 @@ for (( j = 1 ; j <= 5; j++ ))
 do
 
 
-	temp=$(echo "$(/home/users/mohamed2/nemo/intruder/intruderObj -a10 -l128 -n262144 -s1 -t$i)" | egrep -e 'Elapsed time[ ]*= [^ ]*' -o | egrep -e [1234567890.]* -o)
+	temp=$(echo "$(/home/users/mohamed2/nemo/intruder/intruder -a10 -l128 -n262144 -s1 -t$i)" | egrep -e 'Elapsed time[ ]*= [^ ]*' -o | egrep -e [1234567890.]* -o)
 	part_time=$(echo $part_time $temp | awk ' { printf "%f\n", $1 + $2 } ') 
 
 done
