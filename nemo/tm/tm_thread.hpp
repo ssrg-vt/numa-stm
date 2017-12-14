@@ -400,6 +400,31 @@ FORCE_INLINE void thread_end() {
 
 FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 	if (!Self) {
+		//pin the thread to the numa zone
+	    bitmask* mask = numa_allocate_cpumask();
+
+//	    //get # of cpu per node
+//	    numa_node_to_cpus(0, mask);
+//	    int cpu_per_node = 0;
+//	    while(numa_bitmask_isbitset(mask, cpu_per_node)) {
+//	    	cpu_per_node++;
+//	    }
+//
+//	    printf("cpus per node = %d\n", cpu_per_node);
+
+	    numa_bitmask_clearall(mask);
+	    numa_bitmask_setbit(mask, id);
+	    if (numa_sched_setaffinity(0, mask)) {
+	    	perror("numa_sched_setaffinity");
+			exit(-1);
+	    }
+	    numa_free_cpumask(mask);
+
+	    int curcpu = sched_getcpu();
+	    printf("%d cpu set to %d\n", id, curcpu);
+
+
+
 		Self = new Tx_Context();
 		Tx_Context* tx = (Tx_Context*)Self;
 		tx->id = id;//__sync_fetch_and_add(&tm_thread_count, 1);

@@ -1,0 +1,12 @@
+/alg_radix_smp.o
+/computeGraph.o
+/createPartition.o
+/cutClusters.o
+/findSubGraphs.o
+/genScalData.o
+/getStartLists.o
+/getUserParameters.o
+/globals.o
+/ssca2
+/ssca2.o
+/ssca2Obj
