@@ -3,18 +3,14 @@
 FOLDERS="genome intruder kmeans labyrinth ssca2 vacation yada redblacktree bayes"
 rm lib/*.o || true
 
+Obj="Obj"
+
 for F in $FOLDERS
 do
     cd $F
     rm *.o || true
-    rm $F
+    rm $F$Obj
     make -f MakefileObj
     rc=$?
-    if [[ $rc != 0 ]] ; then
-	echo ""
-        echo "=================================== ERROR BUILDING $F ===================================="
-	echo ""
-        exit 1
-    fi
     cd ..
 done

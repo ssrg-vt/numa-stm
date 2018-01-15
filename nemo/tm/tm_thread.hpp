@@ -130,7 +130,7 @@ struct Tx_Context {
 	int id;
 	int numa_zone;
 	jmp_buf scope;
-	uintptr_t start_time[8];
+	uint64_t start_time[8];
 	bool read_only;
 	int reads_pos;
 	int granted_reads_pos;
@@ -259,9 +259,11 @@ FORCE_INLINE T tm_read(tm_obj<T>* addr, Tx_Context* tx, int numa_zone)
 
 	uint64_t v1 = obj->ver;
 	CFENCE;
+//	MFENCE;
 	T val = obj->val;
 	CFENCE;
 	uint64_t v2 = obj->ver;
+	//printf("%lld\n", obj->ver);
 	if (v1 > tx->start_time[0] || (v1 != v2) ||
 #ifndef OBJSTM
 			(*(obj->lock_p) > 0)
@@ -273,9 +275,9 @@ FORCE_INLINE T tm_read(tm_obj<T>* addr, Tx_Context* tx, int numa_zone)
 		tm_abort(tx, 0);
 	}
 	int r_pos = tx->reads_pos++;
-	if (r_pos > ACCESS_SIZE) {
-		printf("read_set over flow %d!!!\n", ACCESS_SIZE);
-	}
+//	if (r_pos > ACCESS_SIZE) {
+//		printf("read_set over flow %d!!!\n", ACCESS_SIZE);
+//	}
 	tx->reads[r_pos] = addr;
 	return val;
 }
@@ -394,8 +396,8 @@ FORCE_INLINE void exp_backoff(Tx_Context* tx)
 }
 
 FORCE_INLINE void thread_end() {
-	Tx_Context* tx = (Tx_Context*)Self;
-	printf("%d: commits = %d, aborts = %d, my zone %d, out of zone = %d\n", tx->id, tx->commits, tx->aborts, tx->numa_zone, tx->internuma);
+//	Tx_Context* tx = (Tx_Context*)Self;
+//	printf("%d: commits = %d, aborts = %d, my zone %d, out of zone = %d\n", tx->id, tx->commits, tx->aborts, tx->numa_zone, tx->internuma);
 }
 
 FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
@@ -594,22 +596,29 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 	}
 
 	tx->writeset->writeback();
+	MFENCE;
+	uint64_t next_ts = read_tsc() << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
-	uintptr_t next_ts = read_tsc();// << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
+
+//	printf("%lld     %lld    %lld\n", tx->start_time[0], next_ts, read_tsc() << LOCKBIT);
 
 //	CFENCE;
-	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
+	if ((next_ts - (tx->start_time[0])) < CLOCK_DIFF) {
 		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
 		while (i-- >= 0) {
 			asm volatile ("pause");
 		}
-		next_ts = read_tsc();// << LOCKBIT;
+		next_ts = read_tsc() << LOCKBIT;
+
 	}
+//	else {
+//		printf("%lld     %lld    %d   %d\n", tx->start_time[0], next_ts, CLOCK_DIFF, tx->commits);
+//	}
 
 	//update versions & unlock
 //	int* lock = (int*) malloc(sizeof(int));
 //	*lock = 1;
-
+//	MFENCE;
 	for (int i = 0; i < tx->writes_pos; i++) {
 		tm_obj<uint8_t>* obj = (tm_obj<uint8_t>*) tx->writes[i];
 		obj->ver = next_ts;
@@ -646,7 +655,7 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 			tx->granted_writes_pos =0;							\
 			tx->writeset->reset();								\
 			tx->count++;		\
-			tx->start_time[0] = read_tsc();
+			tx->start_time[0] = read_tsc() << LOCKBIT;
 
 
 //<< LOCKBIT;

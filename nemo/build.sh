@@ -10,11 +10,5 @@ do
     rm $F
     make -f Makefile
     rc=$?
-    if [[ $rc != 0 ]] ; then
-	echo ""
-        echo "=================================== ERROR BUILDING $F ===================================="
-	echo ""
-        exit 1
-    fi
     cd ..
 done
