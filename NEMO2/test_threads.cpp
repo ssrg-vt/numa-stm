@@ -115,18 +115,10 @@ void* th_run(void * args)
 
 		int acc2[1000];
 		bool once = true;
-#define CHUNKS 50
-		int arrStart = (rand_r_32(&seed) % (ACCOUT_NUM/CHUNKS)) * (CHUNKS);
 		for (int j=0; j< 10; j++) {
 //			if (tx_count % 50 == 0) {
-//				acc1[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-//				acc2[j] = (ACCOUT_NUM/total_threads)*id + j;//rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-//				acc1[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-//				acc2[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
-//				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM);
-//				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM);
-				acc1[j] = arrStart + rand_r_32(&seed) % (CHUNKS);
-				acc2[j] = arrStart + rand_r_32(&seed) % (CHUNKS);
+				acc1[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
+				acc2[j] = (ACCOUT_NUM/total_threads)*id + rand_r_32(&seed) % (ACCOUT_NUM/total_threads);
 //			} else {
 //				acc1[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);
 //				acc2[j] = rand_r_32(&seed) % (ACCOUT_NUM/8 -1);

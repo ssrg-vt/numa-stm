@@ -40,7 +40,7 @@ extern int logiTM;
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define CACHELINE_BYTES 64
 #define CFENCE              __asm__ volatile ("":::"memory")
-
+#define MFENCE  __asm__ volatile ("mfence":::"memory")
 
 using stm::WriteSetEntry;
 using stm::WriteSet;
@@ -167,10 +167,10 @@ extern pad_word_t counter;
 FORCE_INLINE
 uint64_t read_tsc(void)
 {
-//	uint32_t a, d;
-//	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
-//	return ((uint64_t) a) | (((uint64_t) d) << 32);
-	return __sync_fetch_and_add(&(counter.val), 1);
+	uint32_t a, d;
+	__asm __volatile("rdtsc" : "=a" (a), "=d" (d));
+	return ((uint64_t) a) | (((uint64_t) d) << 32);
+//	return __sync_fetch_and_add(&(counter.val), 1);
 }
 
 
@@ -379,28 +379,12 @@ FORCE_INLINE void exp_backoff(Tx_Context* tx)
 }
 
 FORCE_INLINE void thread_end() {
-	Tx_Context* tx = (Tx_Context*)Self;
-	printf("%d: commits = %d, aborts = %d, my zone %d, out of zone = %d\n", tx->id, tx->commits, tx->aborts, tx->numa_zone, tx->internuma);
+//	Tx_Context* tx = (Tx_Context*)Self;
+//	printf(">>%d: commits = %d, aborts = %d, my zone %d, out of zone = %d\n", tx->id, tx->commits, tx->aborts, tx->numa_zone, tx->internuma);
 }
 
 FORCE_INLINE void thread_init(int id, int numa_zone, int index) {
 	if (!Self) {
-		//pin the thread to the numa zone
-	    bitmask* mask = numa_allocate_cpumask();
-
-	    numa_bitmask_clearall(mask);
-	    numa_bitmask_setbit(mask, id);
-	    if (numa_sched_setaffinity(0, mask)) {
-	    	perror("numa_sched_setaffinity");
-			exit(-1);
-	    }
-	    numa_free_cpumask(mask);
-
-	    int curcpu = sched_getcpu();
-	    printf("%d cpu set to %d\n", id, curcpu);
-
-
-
 		Self = new Tx_Context();
 		Tx_Context* tx = (Tx_Context*)Self;
 		tx->id = id;//__sync_fetch_and_add(&tm_thread_count, 1);
@@ -442,7 +426,15 @@ FORCE_INLINE uintptr_t tm_srv_commit(Tx_Context* tx){}
 
 FORCE_INLINE void tm_sys_init() {
 	printf("ORDO!");
-	lock_table[0] = numa_alloc_onnode(sizeof(lock_entry) * TABLE_SIZE, 0);//create_lock_table(i);
+	for (int i=0; i<ZONES;i++) {
+		lock_table[i] = numa_alloc_onnode(sizeof(lock_entry) * TABLE_SIZE, i);//create_lock_table(i);
+		ts_vectors[i] = numa_alloc_onnode(sizeof(ts_vector), i); //create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY1);
+		ts_loc[i] = numa_alloc_onnode(sizeof(ts_vector), i);//create_shared_mem(i, sizeof(ts_vector), SHARED_MEM_KEY2);
+		ts_loc[i]->val = 0;
+		for (int j=0; j<ZONES; j++)
+			ts_vectors[i]->val[j] = 1;
+		//tx->timestamps[i] = create_shared_mem(i, sizeof(pad_word_t));
+	}
 	for (int i=0; i < TABLE_SIZE; i++) {
 		lock_table[0][i].lock_owner = 0;
 		lock_table[0][i].version = 0;
@@ -472,13 +464,12 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		//TODO check timestamp also
 		//int srv_addr = tx->w_zone[i];
 		lock_entry* entry_p = &(lock_table[0][tx->writes[i]]);
-		if (entry_p->lock_owner == (tx->id + 1)) continue; //because of hash collision!
+		if (entry_p->lock_owner == (tx->id + 1)) continue;
 		if (!__sync_bool_compare_and_swap(&(entry_p->lock_owner), 0, tx->id+1)) {
 			failed = true;
 			break;
-		} else {
-			tx->granted_writes[i] = true;
 		}
+		tx->granted_writes[i] = true;
 	}
 	if (failed) { //unlock and abort
 		for (int i = 0; i < tx->writes_pos; i++) {
@@ -509,29 +500,29 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 
 	if (do_abort) {
 		for (int i = 0; i < tx->writes_pos; i++) {
-			if (tx->granted_writes[i]) {
+			//if (tx->granted_writes[i]) {
 				//int srv_addr = tx->w_zone[i];
 				lock_entry* entry_p = &(lock_table[0][tx->writes[i]]);
-				entry_p->lock_owner = 0;//entry_p->lock_owner ^ READ_LOCK;
-				//tx->granted_writes[i] = false;
-			} else {
-				break;
-			}
+				entry_p->lock_owner = 0;
+			//} else {
+				//break;
+			//}
 		}
 		tm_abort(tx, 0);
 	}
 
 	tx->writeset->writeback();
+	MFENCE;
 
 	uintptr_t next_ts = read_tsc();// << LOCKBIT;//ts_vectors[0]->val[0]+1;//__sync_val_compare_and_swap(&ts_vectors[0]->val[0], cur_ts, cur_ts+1);//__sync_fetch_and_add(&ts_vectors[0]->val[0], 1);
 
-//	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
-//		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
-//		while (i-- >= 0) {
-//			asm volatile ("pause");
-//		}
-//		next_ts = read_tsc();// << LOCKBIT;
-//	}
+	if (next_ts - tx->start_time[0] < CLOCK_DIFF) {
+		int i = (CLOCK_DIFF - (next_ts - tx->start_time[0])) / 10;
+		while (i-- >= 0) {
+			asm volatile ("pause");
+		}
+		next_ts = read_tsc();// << LOCKBIT;
+	}
 
 	//update versions & unlock
 	for (int i = 0; i < tx->writes_pos; i++) {
@@ -539,8 +530,8 @@ FORCE_INLINE void tm_commit(Tx_Context* tx)
 		lock_entry* entry_p = &(lock_table[0][tx->writes[i]]);
 		entry_p->version = next_ts;
 		entry_p->lock_owner = 0;
+		MFENCE;
 	}
-
 
 //	addToLogTM(0, 0, 0, 0, 0, 0, 0, 4);
 	tx->commits++;
